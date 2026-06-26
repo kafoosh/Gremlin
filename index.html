@@ -519,6 +519,8 @@
       plus(){ beep(470,0.08,'square',0.2); },                                  // higher blip
       start(){ beep(360,0.06,'square',0.22); setTimeout(()=>beep(560,0.10,'square',0.22),70); },  // little rising chirp
       sparkle(){ [660,880,1175,1480].forEach((f,i)=>setTimeout(()=>beep(f,0.13,'square',0.16),i*70)); },
+      shuffle(){ beep(560,0.035,'square',0.13); },                                                     // quick drumroll tick
+      charge(){ [392,494,587,698,831,988].forEach((f,i)=>setTimeout(()=>beep(f,0.13,'sine',0.13),i*95)); }, // rising magical shimmer
       pop(){ beep(220,0.07,'square',0.26); setTimeout(()=>beep(160,0.08,'square',0.2),60); },
       toggle(){ muted=!muted; build(); if(master)master.gain.value=muted?0:0.5; if(ctx&&ctx.resume)ctx.resume(); return muted; },
       isMuted(){ return muted; }
@@ -642,19 +644,21 @@
   function basePx(){ return Math.max(3, (SH*0.30/GH) * userScale); }
 
   // ---- sequence ----
-  const Seq={ running:false, done:false, t:0, total:0, plan:null, lastStep:0, phaseFired:{}, mode:'reveal' };
+  const Seq={ running:false, done:false, t:0, total:0, plan:null, lastStep:0, lastDr:0, phaseFired:{}, mode:'reveal' };
 
   function buildPlan(){
     const walkDur = rand(3.0,3.8), waveDur=rand(1.3,1.8), thinkDur=rand(1.9,2.6);
+    const shuffleDur=rand(0.9,1.2), chargeDur=rand(1.2,1.6);   // two extra beats before the reveal
     const variant=Math.floor(rand(0,3));   // 0 conjure(spin-flip)  1 pull  2 deck-toss
     const revealDur = variant===2 ? rand(5.0,5.6) : variant===0 ? rand(3.0,3.4) : rand(2.4,2.8);
     const wps=[0.5];
     let cur=0.5, paces= 2+Math.floor(rand(0,2.2));
     for(let i=0;i<paces;i++){ let nx; do{ nx=clamp(0.5+rand(-0.22,0.22),0.28,0.72);}while(Math.abs(nx-cur)<0.12); wps.push(nx); cur=nx; }
     wps.push(0.5); // settle centre for the wave/think
-    const tWalk=walkDur, tWave=tWalk+waveDur, tThink=tWave+thinkDur, tReveal=tThink+revealDur;
-    return { walkDur,waveDur,thinkDur,revealDur,wps,variant,
-             tWalk,tWave,tThink,tReveal, total:tReveal, waves:2+Math.floor(rand(0,2)) };
+    const tWalk=walkDur, tWave=tWalk+waveDur, tThink=tWave+thinkDur;
+    const tShuffle=tThink+shuffleDur, tCharge=tShuffle+chargeDur, tReveal=tCharge+revealDur;
+    return { walkDur,waveDur,thinkDur,shuffleDur,chargeDur,revealDur,wps,variant,
+             tWalk,tWave,tThink,tShuffle,tCharge,tReveal, total:tReveal, waves:2+Math.floor(rand(0,2)) };
   }
   // "Again" routine: pace a little, then shake the head "no", then stop.
   function buildDeclinePlan(){
@@ -668,13 +672,37 @@
   function walkX(localT,dur,wps){ const segs=wps.length-1; const fr=clamp(localT/dur,0,1);
     const fp=fr*segs; let i=Math.min(segs-1,Math.floor(fp)); let lt=easeInOut(fp-i); return lerp(wps[i],wps[i+1],lt); }
 
-  function blankFx(){ return { x:0.5, think:0, stop:0, cardScale:0, cardLift:0, cardFromY:0.52, cardFlip:1, cardFace:'front',
+  function blankFx(){ return { x:0.5, think:0, stop:0, charge:0, dust:0, cardScale:0, cardLift:0, cardFromY:0.52, cardFlip:1, cardFace:'front',
                                cardRot:0, sparkle:0, deck:0, deckRot:0, deckY:0, deckAlpha:1 }; }
 
   // walking gait → mutate a pose at phase ph
   function gait(pose, ph){ pose.legSwing=Math.sin(ph)*0.42;
     pose.armL=Math.PI*0.72 - Math.sin(ph)*0.28; pose.armR=Math.PI*0.28 + Math.sin(ph)*0.28;
     pose.bob=-Math.abs(Math.sin(ph))*basePx()*0.5; }
+
+  // ---- two extra anticipation beats (entertaining + magical) ----
+  function shuffleBeat(lt,pose,fx){                       // excited tap-dance / drumroll, dust kicks up
+    const env=Math.sin(clamp(lt,0,1)*Math.PI);            // ease in & out over the beat
+    fx.x = 0.5 + Math.sin(lt*Math.PI*8)*0.012*env;        // little side-to-side jiggle
+    pose.face=1;
+    pose.legSwing  = Math.sin(lt*Math.PI*16)*0.5*env;     // fast pattering feet
+    pose.armL = Math.PI*0.72 - Math.sin(lt*Math.PI*16)*0.45*env;   // arms pump along
+    pose.armR = Math.PI*0.28 + Math.sin(lt*Math.PI*16)*0.45*env;
+    pose.bob  = -Math.abs(Math.sin(lt*Math.PI*8))*basePx()*0.7*env;// bouncy hop
+    pose.headShift = Math.sin(lt*Math.PI*8)*0.9*env;      // happy head bobble
+    fx.dust = env;
+  }
+  function chargeBeat(lt,pose,fx){                        // plant, sweep both arms overhead, gather the magic
+    const u=easeInOut(clamp(lt,0,1));
+    fx.x=0.5; pose.face=1;
+    pose.armL = lerp(Math.PI*0.78, Math.PI*1.40, u);      // both arms rise overhead
+    pose.armR = lerp(Math.PI*0.22, -Math.PI*0.40, u);
+    pose.legSwing = 0.06;
+    pose.bob = (lt<0.4) ? easeInOut(lt/0.4)*basePx()*0.45            // crouch down to summon...
+                        : lerp(basePx()*0.45, -basePx()*0.3, easeOut((lt-0.4)/0.6)); // ...then lift onto toes
+    pose.headShift = Math.sin(lt*34)*0.5*clamp(lt*2.5,0,1);          // a magical quiver
+    fx.charge = clamp(lt/0.78,0,1) * (lt>0.86? (1-(lt-0.86)/0.14) : 1);  // gather, then hand off to the reveal
+  }
 
   // ---- the three reveals ----
   function revealPull(lt,pose,fx){                       // 1: reach + lift the card up
@@ -733,8 +761,12 @@
       fx.think = easeOut(clamp(lt*2.2,0,1)) * (lt>0.85? (1-(lt-0.85)/0.15) : 1);
       pose.armR = Math.PI*0.22 + Math.sin(lt*6)*0.05; pose.armL = Math.PI*0.78;
       pose.bob = Math.sin(lt*5)*basePx()*0.12;
+    } else if(t < p.tShuffle){
+      shuffleBeat((t-p.tThink)/p.shuffleDur, pose, fx);   // entertaining: excited drumroll shuffle
+    } else if(t < p.tCharge){
+      chargeBeat((t-p.tShuffle)/p.chargeDur, pose, fx);   // magical: gather the magic overhead
     } else {
-      const lt=clamp((t-p.tThink)/p.revealDur,0,1); fx.x=0.5; pose.face=1;
+      const lt=clamp((t-p.tCharge)/p.revealDur,0,1); fx.x=0.5; pose.face=1;
       if(p.variant===0) revealConjure(lt,pose,fx);
       else if(p.variant===2) revealDeck(lt,pose,fx);
       else revealPull(lt,pose,fx);
@@ -844,6 +876,33 @@
       drawStrGrid(ctx, STARLIGHT, px-3.5*sp, py-3.5*sp, sp, i%2?'#F4C740':'#EE7D2B'); }
   }
 
+  // magic charge — pixel starlights spiral INWARD and gather into a bright core (the "summon")
+  function drawCharge(ctx, cx, cy, spread, t, amount){
+    if(amount<=0.01) return; const n=10, gather=easeInOut(clamp(amount,0,1));
+    ctx.save();
+    for(let i=0;i<n;i++){
+      const a = i/n*Math.PI*2 + t*2.4 + gather*Math.PI*1.6;          // swirl as it draws in
+      const rr = spread*(1-0.82*gather)*(0.7+0.3*Math.sin(t*5+i));   // radius shrinks while gathering
+      const px=cx+Math.cos(a)*rr, py=cy+Math.sin(a)*rr*0.85;
+      const tw=0.45+0.55*Math.sin(t*8+i*1.3); if(tw<=0) continue;
+      const sp=Math.max(1, spread*0.05*(0.4+tw)*amount + 0.6);
+      drawStrGrid(ctx, STARLIGHT, px-3.5*sp, py-3.5*sp, sp, i%2?'#B6A2E8':'#F4C740'); }
+    const core=Math.max(1, spread*0.08*(0.3+gather));                // bright core grows as it completes
+    drawStrGrid(ctx, STARLIGHT, cx-3.5*core, cy-3.5*core, core, '#FFFDF8');
+    ctx.restore();
+  }
+  // foot dust — little kicked-up puffs while the gremlin shuffles its feet
+  function drawFootDust(ctx, cx, fy, px, amount, t){
+    if(amount<=0.01) return; ctx.save();
+    for(let i=0;i<6;i++){
+      const side=i%2?1:-1, ph=t*7 + i*1.1, sp=Math.abs(Math.sin(ph));
+      const dx=cx + side*px*(1.0+sp*2.0), dy=fy - sp*px*0.7 + px*0.3;
+      const a=(1-sp)*amount*0.5; if(a<=0.02) continue;
+      ctx.globalAlpha=a; const s=Math.max(1, px*0.18);
+      drawStrGrid(ctx, PXDISC3, dx-1.5*s, dy-1.5*s, s, '#1C1B19'); }
+    ctx.restore();
+  }
+
   function drawScene(t){
     sctx.clearRect(0,0,SW,SH);
     let state;
@@ -865,6 +924,8 @@
     const info=drawComposed(sctx, cx, fy, px, armed.colour, pose.bob);
     if(fx.think>0) drawThink(sctx, cx, info.oy, fx.think, t);
     if(fx.stop>0) drawStopBubble(sctx, cx, info.oy, fx.stop, t);
+    if(fx.dust>0) drawFootDust(sctx, cx, fy, px, fx.dust, t);
+    if(fx.charge>0) drawCharge(sctx, cx, info.oy + OY*px, SH*0.16, t, fx.charge);
     // the reveal card — drawn BEFORE the deck so it rises out from BEHIND the spinning deck
     let cardCx, cardCy;
     if(fx.cardScale>0){
@@ -896,12 +957,14 @@
     if(t<p.tWalk){ const step=Math.floor(t*3.0*2); if(step!==Seq.lastStep){ Seq.lastStep=step; SFX.step(); } }
     if(t>=p.tWalk && !Seq.phaseFired.wave){ Seq.phaseFired.wave=true; SFX.wave(); }
     if(t>=p.tWave && !Seq.phaseFired.think){ Seq.phaseFired.think=true; SFX.think(); }
-    if(t>=p.tThink && !Seq.phaseFired.reveal){ Seq.phaseFired.reveal=true; SFX.pop(); SFX.sparkle(); }
+    if(t>=p.tThink && t<p.tShuffle){ const dr=Math.floor((t-p.tThink)*14); if(dr!==Seq.lastDr){ Seq.lastDr=dr; SFX.shuffle(); } }
+    if(t>=p.tShuffle && !Seq.phaseFired.charge){ Seq.phaseFired.charge=true; SFX.charge(); }
+    if(t>=p.tCharge && !Seq.phaseFired.reveal){ Seq.phaseFired.reveal=true; SFX.pop(); SFX.sparkle(); }
   }
 
   function startSequence(){
     SFX.unlock(); SFX.start();
-    Seq.mode='reveal'; Seq.plan=buildPlan(); Seq.t=0; Seq.running=true; Seq.done=false; Seq.lastStep=-1; Seq.phaseFired={};
+    Seq.mode='reveal'; Seq.plan=buildPlan(); Seq.t=0; Seq.running=true; Seq.done=false; Seq.lastStep=-1; Seq.lastDr=-1; Seq.phaseFired={};
     startBtn.disabled=true; minusBtn.disabled=true; plusBtn.disabled=true;
     greetTitle.innerHTML='Watch closely…<small>&nbsp;</small>';
   }
