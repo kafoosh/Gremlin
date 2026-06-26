@@ -1,0 +1,1020 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#FBF6EA">
+<title>Gremlin</title>
+<!--
+  ===========================================================================
+  GREMLIN — a lite web version of the "A Little Guy" app, in the Little Guy
+  "sticker book" style. Single self-contained file (inline CSS + JS, procedural
+  audio, zero assets) so it runs from file:// and embeds anywhere (GitHub Pages
+  → WordPress). Sibling of the Modern Ouija / Faces webapps.
+
+  THE METHOD (performer reference — also in the CONFIG block below):
+    • The 4 gremlins (left → right in the picker) secretly = the SUIT.
+        1 = Clubs ♣   2 = Hearts ♥   3 = Spades ♠   4 = Diamonds ♦   (CHaSeD)
+    • The 12 colour swatches (4×3, reading order L→R, top→bottom) = the VALUE.
+        A,2,3,4,5,6,7,8,9,10,J,Q  — and the RANDOM button = King.
+    • So the card the gremlin produces = colour(value) + gremlin(suit).
+    Choosing a gremlin + a colour looks like innocent customisation; it is the
+    secret input. Triple-tap the footer for an on-screen performer cheat sheet.
+  ===========================================================================
+-->
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='1.5' y='1.5' width='29' height='29' rx='7' fill='%23FBF6EA' stroke='%231C1B19' stroke-width='2'/><rect x='8' y='5' width='4' height='4' fill='%23EE7D2B'/><rect x='20' y='5' width='4' height='4' fill='%23EE7D2B'/><rect x='7' y='9' width='18' height='15' rx='4' fill='%23EE7D2B'/><rect x='11' y='13' width='3' height='4' fill='%23FFFDF8'/><rect x='18' y='13' width='3' height='4' fill='%23FFFDF8'/><rect x='12' y='14' width='2' height='2' fill='%231C1B19'/><rect x='19' y='14' width='2' height='2' fill='%231C1B19'/></svg>">
+<style>
+  :root{
+    --ink:#1C1B19; --paper:#FBF6EA; --cream:#FFFDF8;
+    --orange:#EE7D2B; --purple:#B6A2E8; --yellow:#F4C740; --green:#4FB477;
+    --font: ui-rounded, "SF Pro Rounded", "Hiragino Maru Gothic ProN",
+            -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+  }
+  *{ margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{
+    height:100%; width:100%; background:var(--paper); color:var(--ink);
+    font-family:var(--font); overflow:hidden; position:fixed; inset:0;
+    touch-action:manipulation; overscroll-behavior:none;
+    -webkit-user-select:none; user-select:none;
+  }
+
+  /* ---------- backdrop (sticker-book scatter) ---------- */
+  #backdrop{ position:fixed; inset:0; z-index:0; }
+
+  /* ---------- stage (the Little Guy play screen) ---------- */
+  #stage{ position:fixed; inset:0; z-index:1; display:none; }
+  #stage.show{ display:block; }
+  #scene{ position:absolute; inset:0; }
+  #back{ position:absolute; top:max(14px,env(safe-area-inset-top)); left:14px; z-index:5;
+    font-size:15px; padding:9px 15px; }
+  #greetTitle{ position:absolute; top:max(18px,env(safe-area-inset-top)); left:0; right:0;
+    text-align:center; font-weight:900; font-size:clamp(18px,5.4vw,26px); letter-spacing:.01em;
+    color:var(--ink); pointer-events:none; }
+  #greetTitle small{ display:block; font-weight:700; font-size:.56em; opacity:.62; letter-spacing:.16em;
+    text-transform:uppercase; margin-top:3px; }
+
+  #controls{ position:absolute; left:50%; transform:translateX(-50%);
+    bottom:max(64px,calc(env(safe-area-inset-bottom) + 56px));
+    display:flex; gap:14px; align-items:center; z-index:3; }
+
+  /* ---------- sticker buttons ---------- */
+  .sticker{ font-family:inherit; font-weight:900; color:var(--ink); background:var(--yellow);
+    border:3px solid var(--ink); border-radius:16px; cursor:pointer;
+    box-shadow:-5px 5px 0 0 var(--ink); transition:transform .07s ease, box-shadow .07s ease, background .15s ease;
+    text-transform:uppercase; letter-spacing:.05em; line-height:1; -webkit-user-select:none; user-select:none; }
+  .sticker:active{ transform:translate(-4px,4px); box-shadow:-1px 1px 0 0 var(--ink); }
+  .sticker:disabled{ opacity:.4; cursor:default; box-shadow:-5px 5px 0 0 var(--ink); transform:none; }
+  .sticker.big{ font-size:clamp(18px,5vw,24px); padding:16px 30px; }
+  .sticker.round{ width:58px; height:58px; border-radius:18px; font-size:30px; padding:0;
+    display:flex; align-items:center; justify-content:center; }
+  #start{ background:var(--orange); color:var(--cream); }
+  #minus,#plus{ background:var(--purple); }
+  .confirm{ background:var(--green); color:var(--cream); }
+
+  /* ---------- overlays ---------- */
+  .overlay{ position:fixed; inset:0; z-index:20; display:flex; align-items:center; justify-content:center;
+    padding:18px; }
+  .overlay.hidden{ display:none; }
+  .panel{ background:var(--cream); border:4px solid var(--ink); border-radius:26px;
+    box-shadow:-8px 8px 0 0 var(--ink); padding:22px 20px 24px; width:100%;
+    max-width:430px; max-height:92vh; overflow:auto; text-align:center; }
+  .panel h1{ font-weight:900; font-size:clamp(21px,6vw,28px); margin-bottom:2px; }
+  .panel .sub{ font-size:13px; font-weight:700; opacity:.6; letter-spacing:.04em; margin-bottom:16px; }
+  .panel .actions{ margin-top:18px; display:flex; justify-content:center; }
+
+  /* gremlin picker */
+  #gremRow{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+  .gremTile{ position:relative; background:var(--paper); border:3px solid var(--ink); border-radius:16px;
+    padding:6px 2px 4px; cursor:pointer; box-shadow:-3px 3px 0 0 var(--ink);
+    transition:transform .1s ease, box-shadow .1s ease, background .12s ease; }
+  .gremTile canvas{ width:100%; height:auto; display:block; image-rendering:pixelated; }
+  .gremTile .nm{ font-size:10px; font-weight:800; opacity:.7; margin-top:2px; text-transform:uppercase; letter-spacing:.03em; }
+  .gremTile.sel{ background:var(--yellow); transform:translate(-2px,2px); box-shadow:-1px 1px 0 0 var(--ink); }
+  .gremTile.sel::after{ content:"✓"; position:absolute; top:-9px; right:-9px; width:22px; height:22px;
+    background:var(--green); color:var(--cream); border:2px solid var(--ink); border-radius:50%;
+    font-size:13px; font-weight:900; display:flex; align-items:center; justify-content:center; }
+
+  /* colour picker */
+  #colourPreviewWrap{ display:flex; justify-content:center; margin-bottom:14px; }
+  #colourPreview{ width:118px; height:118px; image-rendering:pixelated;
+    background:var(--paper); border:3px solid var(--ink); border-radius:18px; box-shadow:-3px 3px 0 0 var(--ink); }
+  #swatchGrid{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+  .swatch{ position:relative; padding-top:100%; border:3px solid var(--ink); border-radius:13px;
+    cursor:pointer; box-shadow:-3px 3px 0 0 var(--ink); transition:transform .08s ease, box-shadow .08s ease; }
+  .swatch.sel{ transform:translate(-2px,2px); box-shadow:-1px 1px 0 0 var(--ink); }
+  .swatch.sel::after{ content:""; position:absolute; inset:0; border:3px solid var(--cream); border-radius:9px; }
+  #randomWrap{ margin-top:12px; }
+  #randomBtn{ width:100%; font-size:16px; padding:13px; background:var(--purple); }
+  #randomBtn.sel{ background:var(--orange); color:var(--cream); transform:translate(-2px,2px); box-shadow:-1px 1px 0 0 var(--ink); }
+  #randomBtn .die{ width:1.35em; height:1.35em; vertical-align:-0.3em; margin-right:0.5em; }
+
+  /* ---------- chrome: info, footer, mute, cheat ---------- */
+  #info{ position:fixed; left:14px; bottom:max(14px,env(safe-area-inset-bottom)); z-index:30;
+    width:32px; height:32px; border:none; background:transparent; color:var(--ink); opacity:.55; cursor:pointer; }
+  #info:hover{ opacity:1; } #info svg{ width:100%; height:100%; display:block; }
+  #infoCard{ position:fixed; left:12px; bottom:54px; z-index:31; max-width:min(80vw,300px);
+    background:var(--cream); border:3px solid var(--ink); border-radius:14px; box-shadow:-4px 4px 0 0 var(--ink);
+    padding:13px 15px; font-size:13px; line-height:1.5; opacity:0; transform:translateY(6px); pointer-events:none;
+    transition:opacity .2s ease, transform .2s ease; }
+  #infoCard.show{ opacity:1; transform:translateY(0); pointer-events:auto; }
+  #infoCard b{ font-weight:800; } #infoCard a{ color:var(--orange); font-weight:800; text-decoration:underline; }
+
+  #footer{ position:fixed; left:50%; transform:translateX(-50%);
+    bottom:max(15px,calc(env(safe-area-inset-bottom) + 1px)); z-index:30;
+    font-size:9.5px; font-weight:700; letter-spacing:.12em; opacity:.45; white-space:nowrap; text-transform:uppercase; }
+
+  #mute{ position:fixed; right:14px; bottom:max(14px,env(safe-area-inset-bottom)); z-index:30;
+    width:32px; height:32px; border:none; background:transparent; color:var(--ink); opacity:.5; cursor:pointer; }
+  #mute:hover{ opacity:1; } #mute svg{ width:100%; height:100%; display:block; }
+
+  #cheat{ position:fixed; inset:0; z-index:40; display:none; align-items:center; justify-content:center; padding:20px;
+    background:rgba(28,27,25,.45); }
+  #cheat.show{ display:flex; }
+  #cheat .panel{ max-width:360px; text-align:left; }
+  #cheat h2{ font-weight:900; font-size:18px; margin-bottom:10px; text-align:center; }
+  #cheat .row{ font-size:14px; line-height:1.7; }
+  #cheat .row b{ font-weight:900; }
+  #cheat .armed{ margin-top:12px; padding:10px 12px; background:var(--yellow); border:3px solid var(--ink);
+    border-radius:12px; font-weight:900; text-align:center; font-size:17px; }
+  #cheat .close{ margin-top:14px; width:100%; }
+</style>
+</head>
+<body>
+  <canvas id="backdrop"></canvas>
+
+  <!-- ============ STAGE (Little Guy play screen) ============ -->
+  <div id="stage">
+    <canvas id="scene"></canvas>
+    <button id="back" class="sticker" aria-label="back to gremlin selection">‹ Back</button>
+    <div id="greetTitle">Meet your gremlin<small>tap start</small></div>
+    <div id="controls">
+      <button id="minus" class="sticker round" aria-label="smaller">–</button>
+      <button id="start" class="sticker big">Start</button>
+      <button id="plus" class="sticker round" aria-label="bigger">+</button>
+    </div>
+  </div>
+
+  <!-- ============ OVERLAY 1 — pick a gremlin (= suit) ============ -->
+  <div id="pickGremlin" class="overlay">
+    <div class="panel">
+      <h1>Pick your gremlin</h1>
+      <div class="sub">choose a little guy to bring to life</div>
+      <div id="gremRow"></div>
+      <div class="actions"><button id="gremConfirm" class="sticker big confirm" disabled>Confirm</button></div>
+    </div>
+  </div>
+
+  <!-- ============ OVERLAY 2 — pick a colour (= value) ============ -->
+  <div id="pickColour" class="overlay hidden">
+    <div class="panel">
+      <h1>Give it a colour</h1>
+      <div class="sub">pick a shade you like</div>
+      <div id="colourPreviewWrap"><canvas id="colourPreview" width="118" height="118"></canvas></div>
+      <div id="swatchGrid"></div>
+      <div id="randomWrap"><button id="randomBtn" class="sticker"><svg class="die" viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true"><rect width="9" height="9" fill="#1C1B19"/><rect x="1" y="1" width="7" height="7" fill="#FFFDF8"/><rect x="2" y="2" width="1" height="1" fill="#1C1B19"/><rect x="6" y="2" width="1" height="1" fill="#1C1B19"/><rect x="4" y="4" width="1" height="1" fill="#1C1B19"/><rect x="2" y="6" width="1" height="1" fill="#1C1B19"/><rect x="6" y="6" width="1" height="1" fill="#1C1B19"/></svg>Random</button></div>
+      <div class="actions"><button id="colourConfirm" class="sticker big confirm" disabled>Confirm</button></div>
+    </div>
+  </div>
+
+  <!-- ============ chrome ============ -->
+  <button id="info" aria-label="about" title="About">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="9.4"/><line x1="12" y1="11" x2="12" y2="16.5"/><circle cx="12" cy="7.6" r="1" fill="currentColor" stroke="none"/>
+    </svg>
+  </button>
+  <div id="infoCard">
+    Pick a <b>gremlin</b>, give it a <b>colour</b>, then press <b>Start</b> — your little guy
+    will wander off and find a playing card!<br><br>Follow
+    <a href="https://instagram.com/oddpaq" target="_blank" rel="noopener">@oddpaq</a> for more.
+  </div>
+
+  <button id="mute" aria-label="sound" title="Sound on/off">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 9v6h4l5 5V4L8 9H4z"/><path id="wave" d="M16 8.5a4.5 4.5 0 0 1 0 7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+  </button>
+
+  <div id="footer">A webapp by Kenneth Aidan Foo</div>
+
+  <!-- performer cheat sheet (triple-tap footer) -->
+  <div id="cheat">
+    <div class="panel">
+      <h2>Performer notes</h2>
+      <div class="row">
+        <b>Gremlins</b> (left→right)<br>
+        1 ♣ Clubs · 2 ♥ Hearts<br>3 ♠ Spades · 4 ♦ Diamonds
+      </div>
+      <div class="row" style="margin-top:10px">
+        <b>Colours</b> (reading order)<br>
+        A 2 3 4 5 6 7 8 9 10 J Q<br>Random button = King
+      </div>
+      <div class="armed" id="cheatArmed">Armed: —</div>
+      <button class="sticker big confirm close" id="cheatClose">Close</button>
+    </div>
+  </div>
+
+<script>
+"use strict";
+(function(){
+  /* ============================================================
+     CONFIG — the secret mapping (edit here to re-map)
+     ============================================================ */
+  // Gremlin index (picker order) → suit.  CHaSeD: ♣ ♥ ♠ ♦
+  const SUIT_FOR_GREMLIN = ['clubs','hearts','spades','diamonds'];
+  // Swatch index 0..11 (reading order) → card value 1..12 (A..Q). Random → 13 (King).
+  const VALUE_FOR_SWATCH = [1,2,3,4,5,6,7,8,9,10,11,12];
+  const KING_VALUE = 13;
+
+  // 12 swatch colours, reading order (A → Q).
+  const SWATCHES = [
+    '#E5484D', '#EE7D2B', '#F4C740', '#86C232',
+    '#3FA34D', '#2BB3A3', '#3AA0E5', '#4666E5',
+    '#7C5CE0', '#B6A2E8', '#E5559E', '#B07D52'
+  ];
+  // Colours the random/King gremlin may end up wearing on stage.
+  const RANDOM_POOL = ['#E5484D','#EE7D2B','#3FA34D','#3AA0E5','#7C5CE0','#E5559E','#2BB3A3','#F4C740'];
+
+  const SUIT_GLYPH = { clubs:'♣', hearts:'♥', spades:'♠', diamonds:'♦' };
+  const SUIT_NAME  = { clubs:'Clubs', hearts:'Hearts', spades:'Spades', diamonds:'Diamonds' };
+  function valueLabel(v){ return v===1?'A':v===11?'J':v===12?'Q':v===13?'K':String(v); }
+
+  const rand=(a,b)=>a+Math.random()*(b-a);
+  const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+  const lerp=(a,b,t)=>a+(b-a)*t;
+  const easeInOut=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
+  const easeOut=t=>1-Math.pow(1-t,3);
+  const DPR=()=>Math.min(window.devicePixelRatio||1,2);
+
+  /* colour helpers */
+  function hex2rgb(h){ h=h.replace('#',''); return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)]; }
+  function rgb2hex(r){ return '#'+r.map(x=>clamp(Math.round(x),0,255).toString(16).padStart(2,'0')).join(''); }
+  function shade(hex,f){ const c=hex2rgb(hex); return rgb2hex(f<1?c.map(x=>x*f):c.map(x=>x+(255-x)*(f-1))); }
+
+  /* ============================================================
+     GREMLIN SPRITES — silhouettes only; the renderer auto-outlines
+     and adds limbs. codes: .=empty b=body d=dark w=eyewhite e=pupil y=accent
+     ============================================================ */
+  const C={'.':0,'b':1,'d':2,'w':3,'e':4,'y':5,'m':6};   // m = ink mouth
+  function parse(rows){ return rows.map(r=>r.split('').map(ch=>C[ch]??0)); }
+
+  // 1 ♣ Bramble — round, two club-ish ear tufts
+  const G_BRAMBLE = parse([
+    "..bb.....bb..",
+    "..bb.....bb..",
+    ".bbbbbbbbbbb.",
+    ".bbbbbbbbbbb.",
+    ".bbwwbbbwwbb.",
+    ".bbwebbbewbb.",
+    ".bbbbbbbbbbb.",
+    "..bbbbbbbbb..",
+    "..bbbyyybbb..",
+    "..bbbyyybbb..",
+    "..bbbbbbbbb..",
+    "............."
+  ]);
+  // 2 ♥ Pip — heart-shaped head, big eyes, blush
+  const G_PIP = parse([
+    ".bbb.....bbb.",
+    ".bbbbb.bbbbb.",
+    ".bbbbbbbbbbb.",
+    ".bbbbbbbbbbb.",
+    ".bbwwwbbwwwb.",
+    ".bbweebbeewb.",
+    ".byybbbbbyyb.",
+    "..bbbbbbbbb..",
+    "..bbbbbbbbb..",
+    "..bbbbbbbbb..",
+    "..bbbbbbbbb..",
+    "............."
+  ]);
+  // 3 ♠ Spike — single pointed horn, leaner
+  const G_SPIKE = parse([
+    "......b......",
+    ".....bbb.....",
+    ".....bbb.....",
+    "....bbbbb....",
+    "...bbbbbbb...",
+    "..bbbbbbbbb..",
+    "..bwwbbbwwb..",
+    "..bwebbbewb..",
+    "...bbbbbbb...",
+    "...bbbbbbb...",
+    "...bbbbbbb...",
+    "............."
+  ]);
+  // 4 ♦ Gem — angular diamond head + side crystal points
+  const G_GEM = parse([
+    "......b......",
+    ".....bbb.....",
+    "....bbbbb....",
+    "...bbbbbbb...",
+    "..bbbbbbbbb..",
+    "bbbbbbbbbbbbb",
+    ".bbwwbbbwwbb.",
+    ".bbwebbbewbb.",
+    "..bbbbbbbbb..",
+    "...bbbbbbb...",
+    "...bbbbbbb...",
+    "............."
+  ]);
+
+  const GREMLINS = [
+    { name:'Bramble', grid:G_BRAMBLE, shoulder:[[2,7],[10,7]], hip:[[4,10],[8,10]], neckRow:7 },
+    { name:'Pip',     grid:G_PIP,     shoulder:[[2,7],[10,7]], hip:[[4,10],[8,10]], neckRow:7 },
+    { name:'Spike',   grid:G_SPIKE,   shoulder:[[3,8],[9,8]],  hip:[[4,10],[8,10]], neckRow:8 },
+    { name:'Gem',     grid:G_GEM,     shoulder:[[2,8],[10,8]], hip:[[4,10],[8,10]], neckRow:8 }
+  ];
+  const BODY_W=13, BODY_H=12;
+  const LEG_LEN=4, ARM_LEN=4;
+
+  /* ---- compose grid (body + limbs) then auto-outline + draw ---- */
+  const GW=21, GH=22, BOX=new Int8Array(GW*GH);
+  const OX=Math.floor((GW-BODY_W)/2);   // body x offset in compose grid
+  const OY=1;                            // body y offset
+  function bset(x,y,v){ if(x<0||y<0||x>=GW||y>=GH)return; BOX[y*GW+x]=v; }
+  function bget(x,y){ if(x<0||y<0||x>=GW||y>=GH)return 0; return BOX[y*GW+x]; }
+
+  // stamp a limb of pixel cells from (sx,sy) along angle a, length len; tip = code tip
+  function stampLimb(sx,sy,a,len,code,tip){
+    const dx=Math.cos(a), dy=Math.sin(a);
+    for(let i=0;i<=len;i++){
+      const x=Math.round(sx+dx*i), y=Math.round(sy+dy*i);
+      bset(x,y, (i>=len-1)?tip:code);
+      if(i>0 && i<len) bset(x, y+1>GH?y:y, code); // a touch of thickness downward
+    }
+  }
+
+  // pose: {face:±1, legSwing, armL, armR, bob, headShift}  (angles in radians, 0=+x, +down)
+  function composeGremlin(gre, pose){
+    BOX.fill(0);
+    const flip = pose.face<0;
+    const fc = x=> flip ? (BODY_W-1-x) : x;
+    const hs = Math.round(pose.headShift||0);   // head-shake offset (cells), applied to head rows
+    // body
+    for(let r=0;r<BODY_H;r++) for(let c=0;c<BODY_W;c++){
+      const v=gre.grid[r][c]; if(!v) continue;
+      let cc=fc(c); if(r < gre.neckRow) cc+=hs;   // shift the head only → reads as turning "no"
+      bset(OX+cc, OY+r, v);
+    }
+    // arms
+    const [s0,s1]=gre.shoulder;
+    const sLx=OX+fc(s0[0]), sLy=OY+s0[1], sRx=OX+fc(s1[0]), sRy=OY+s1[1];
+    stampLimb(sLx,sLy, pose.armL, ARM_LEN, 1, 2);
+    stampLimb(sRx,sRy, pose.armR, ARM_LEN, 1, 2);
+    // legs (scissor about straight-down)
+    const [h0,h1]=gre.hip;
+    const hLx=OX+fc(h0[0]), hLy=OY+h0[1], hRx=OX+fc(h1[0]), hRy=OY+h1[1];
+    stampLimb(hLx,hLy, Math.PI/2 + pose.legSwing, LEG_LEN, 1, 2);
+    stampLimb(hRx,hRy, Math.PI/2 - pose.legSwing, LEG_LEN, 1, 2);
+  }
+
+  // draw the composed BOX at screen position (feet centred at cx, floorY), cell px
+  function drawComposed(ctx, cx, floorY, px, colour, bob){
+    const body=colour, dark=shade(colour,0.74), light=shade(colour,1.18);
+    const ink='#1C1B19', white='#FFFDF8', yel='#F4C740';
+    // lowest filled row = feet → align to floor
+    let maxY=0; for(let y=0;y<GH;y++) for(let x=0;x<GW;x++) if(BOX[y*GW+x]){ if(y>maxY)maxY=y; }
+    const ox=Math.round(cx-(GW/2)*px);
+    const oy=Math.round(floorY-(maxY+1)*px + bob);
+    // outline pass (ink cells around silhouette)
+    ctx.fillStyle=ink;
+    for(let y=0;y<GH;y++) for(let x=0;x<GW;x++){
+      if(BOX[y*GW+x]) continue;
+      let adj=false;
+      for(let j=-1;j<=1&&!adj;j++) for(let i=-1;i<=1;i++){ if(i||j){ if(bget(x+i,y+j)){adj=true;break;} } }
+      if(adj) ctx.fillRect(ox+x*px, oy+y*px, px, px);
+    }
+    // fill pass
+    for(let y=0;y<GH;y++) for(let x=0;x<GW;x++){
+      const v=BOX[y*GW+x]; if(!v) continue;
+      ctx.fillStyle = v===1?body : v===2?dark : v===3?white : v===4?ink : v===5?yel : light;
+      ctx.fillRect(ox+x*px, oy+y*px, px, px);
+    }
+    return {ox,oy,maxY};
+  }
+
+  /* ============================================================
+     CARD ART — clean front (value word + big suit), pixel back (starlights)
+     ============================================================ */
+  function drawStrGrid(ctx, rows, x, y, px, color){
+    ctx.fillStyle=color;
+    for(let r=0;r<rows.length;r++){ const row=rows[r];
+      for(let c=0;c<row.length;c++) if(row[c]!=='.'&&row[c]!==' ') ctx.fillRect(Math.round(x+c*px),Math.round(y+r*px),px,px); }
+  }
+  function valueWord(v){ return v===1?'ACE' : v===11?'JACK' : v===12?'QUEEN' : v===13?'KING' : String(v); }
+  function suitColorOf(s){ return (s==='hearts'||s==='diamonds') ? '#E5484D' : '#1C1B19'; }
+
+  // pixel "starlight" — the 4-point twinkle from the app icon (card back + conjure sparkles)
+  const STARLIGHT=["...#...","...#...","..###..","#######","..###..","...#...","...#..."];
+
+  // ---- clean 5×7 pixel value font (letters for face cards) ----
+  const PXF={
+    '0':[".###.","#...#","#..##","#.#.#","##..#","#...#",".###."],
+    '1':["..#..",".##..","..#..","..#..","..#..","..#..",".###."],
+    '2':[".###.","#...#","....#","...#.","..#..",".#...","#####"],
+    '3':[".###.","#...#","....#","..##.","....#","#...#",".###."],
+    '4':["...#.","..##.",".#.#.","#..#.","#####","...#.","...#."],
+    '5':["#####","#....","####.","....#","....#","#...#",".###."],
+    '6':[".###.","#....","#....","####.","#...#","#...#",".###."],
+    '7':["#####","....#","...#.","..#..",".#...",".#...",".#..."],
+    '8':[".###.","#...#","#...#",".###.","#...#","#...#",".###."],
+    '9':[".###.","#...#","#...#",".####","....#","....#",".###."],
+    'A':[".###.","#...#","#...#","#####","#...#","#...#","#...#"],
+    'J':["..###","...#.","...#.","...#.","#..#.","#..#.",".##.."],
+    'Q':[".###.","#...#","#...#","#...#","#.#.#","#..#.",".##.#"],
+    'K':["#...#","#..#.","#.#..","##...","#.#..","#..#.","#...#"]
+  };
+  function drawPxText(ctx, str, x, y, cell, color){
+    let cx=x; for(const ch of str){ const g=PXF[ch]; if(g){ drawStrGrid(ctx,g,cx,y,cell,color); cx+=6*cell; } else cx+=3*cell; }
+  }
+  function pxTextWidth(str){ let w=0; for(const ch of str) w+= PXF[ch]?6:3; return w-1; }
+
+  // ---- chunky pixel suits (image-2 style); auto-bevelled when drawn ----
+  const SUITPX={
+    hearts:[".####...####.",".#####.#####.",".###########.",".###########.",".###########.","..#########..","...#######...","....#####....",".....###.....","......#......"],
+    diamonds:["......#......",".....###.....","....#####....","...#######...","..#########..",".###########.","..#########..","...#######...","....#####....",".....###.....","......#......"],
+    spades:["......#......",".....###.....","....#####....","...#######...","..#########..",".###########.",".###########.","..#########..","...#######...",".....#####....","......#......",".....###.....","....#####...."],
+    clubs:["....#####....","...#######...","...#######...","...#######...","....#####....",".##.#####.##.","#############","#############",".###########.",".....###.....","....#####...."]
+  };
+  // draw a pixel-art shape with an auto-bevel (light top-left, dark bottom-right)
+  function drawPixelSuit(ctx, grid, x, y, cell, color){   // flat fill, no edge bevel
+    const H=grid.length, W=grid[0].length;
+    const on=(r,c)=> r>=0&&c>=0&&r<H&&c<W && grid[r][c]!=='.'&&grid[r][c]!==' ';
+    ctx.fillStyle=color;
+    for(let r=0;r<H;r++) for(let c=0;c<W;c++){ if(on(r,c))
+      ctx.fillRect(Math.round(x+c*cell),Math.round(y+r*cell),Math.ceil(cell)+1,Math.ceil(cell)+1); }
+  }
+
+  // pixel rounded-rect (bevelled corners), drawn row-by-row via R(gx,gy,gw,gh,col) in cells
+  function pxRoundRect(R, gx, gy, gw, gh, col){
+    const steps=[3,1];
+    for(let ry=0;ry<gh;ry++){ const fe=Math.min(ry,gh-1-ry), inset= fe<steps.length?steps[fe]:0;
+      R(gx+inset, gy+ry, gw-2*inset, 1, col); }
+  }
+  // Card faces drawn centred at the current origin; caller does translate/scale/rotate.
+  const CW=24, CH=34;   // card grid in cells (≈0.706 aspect)
+  function cardCellFns(ctx, W){ const cell=W/CW, x0=-W/2, y0=-CH*cell/2;
+    return { cell, x0, y0, R:(gx,gy,gw,gh,col)=>{ ctx.fillStyle=col;   // +1px overlap → no row seams
+      ctx.fillRect(Math.round(x0+gx*cell),Math.round(y0+gy*cell),Math.ceil(gw*cell)+1,Math.ceil(gh*cell)+1); } }; }
+  function drawCardFront(ctx, W, H, card, alpha){
+    const {cell,x0,y0,R}=cardCellFns(ctx,W), sc=suitColorOf(card.suit);
+    ctx.save(); ctx.globalAlpha=alpha*0.16; pxRoundRect((gx,gy,gw,gh,c)=>R(gx+1.2,gy+1.6,gw,gh,c),0,0,CW,CH,'#1C1B19');
+    ctx.globalAlpha=alpha;
+    pxRoundRect(R,0,0,CW,CH,'#1C1B19');          // black pixel outline (no coloured border)
+    pxRoundRect(R,2,2,CW-4,CH-4,'#FFFDF8');      // white face
+    drawPxText(ctx, valueLabel(card.value), x0+3.6*cell, y0+3.6*cell, cell, sc);   // value (letter/number)
+    const g=SUITPX[card.suit], suitCell=cell*(CW*0.62/g[0].length);
+    const sw=g[0].length*suitCell, sh=g.length*suitCell;
+    drawPixelSuit(ctx, g, -sw/2, -sh/2 + CH*cell*0.07, suitCell, sc);              // big pixel suit
+    ctx.restore();
+  }
+  function drawCardBack(ctx, W, H, alpha){
+    const {cell,x0,y0,R}=cardCellFns(ctx,W);
+    ctx.save(); ctx.globalAlpha=alpha*0.16; pxRoundRect((gx,gy,gw,gh,c)=>R(gx+1.2,gy+1.6,gw,gh,c),0,0,CW,CH,'#1C1B19');
+    ctx.globalAlpha=alpha;
+    pxRoundRect(R,0,0,CW,CH,'#1C1B19');          // ink outline
+    pxRoundRect(R,1,1,CW-2,CH-2,'#FFFDF8');      // light border
+    pxRoundRect(R,3,3,CW-6,CH-6,'#141414');      // black face
+    const cols=3, rows=4, fX=x0+4*cell, fY=y0+4*cell, fW=(CW-8)*cell, fH=(CH-8)*cell;   // gold starlights
+    const sp=Math.max(1, Math.min(fW/cols,fH/rows)*0.60/7);
+    for(let ry=0;ry<rows;ry++) for(let rx=0;rx<cols;rx++){
+      const sx=fX+fW*(rx+0.5)/cols, sy=fY+fH*(ry+0.5)/rows;
+      drawStrGrid(ctx, STARLIGHT, sx-3.5*sp, sy-3.5*sp, sp, '#EBB23C'); }
+    ctx.restore();
+  }
+  // a thick deck = one solid 3D pixel block (NOT individual cards); top face = the starlight back
+  function drawDeck(ctx, cx, cy, W, H, alpha, rot){
+    ctx.save(); ctx.globalAlpha=alpha; ctx.translate(cx,cy); ctx.rotate(rot||0);
+    const thk=Math.max(4, Math.round(H*0.16)), r=Math.max(2, Math.round(Math.min(W,H)*0.09));
+    const sh=Math.max(2, Math.round(thk*0.4));
+    ctx.fillStyle='#1C1B19'; roundRect(ctx, -W/2, -H/2, W, H+thk, r); ctx.fill();                 // ink silhouette
+    ctx.fillStyle='#EDE6D6'; roundRect(ctx, -W/2+2, H/2-r, W-4, thk+r-2, Math.max(1,r*0.5)); ctx.fill(); // solid paper side
+    ctx.fillStyle='#D2C9B5'; ctx.fillRect(-W/2+2, H/2+thk-2-sh, W-4, sh);                          // bottom-edge shade
+    drawCardBack(ctx, W, H, alpha);                                                                // top face on top
+    ctx.restore();
+  }
+  // dispatch: translate/scale(flip)/rotate then draw the chosen face
+  function drawRevealCard(ctx, cx, cy, W, H, card, alpha, flipX, rot, face){
+    ctx.save(); ctx.translate(cx,cy); if(rot) ctx.rotate(rot); ctx.scale(Math.max(flipX,0.05),1);
+    if(face==='back') drawCardBack(ctx, W, H, alpha); else drawCardFront(ctx, W, H, card, alpha);
+    ctx.restore();
+  }
+
+  /* ============================================================
+     AUDIO — procedural blips, OFF by default
+     ============================================================ */
+  const SFX=(function(){
+    let ctx,master,muted=false,built=false;     // sound ON by default
+    function build(){ if(built)return; const AC=window.AudioContext||window.webkitAudioContext; if(!AC)return;
+      ctx=new AC(); master=ctx.createGain(); master.gain.value=muted?0:0.5; master.connect(ctx.destination); built=true; }
+    function beep(f,dur,type,vol){ if(!built||muted)return; const o=ctx.createOscillator(),g=ctx.createGain();
+      o.type=type||'square'; o.frequency.value=f; o.connect(g); g.connect(master); const t=ctx.currentTime;
+      g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(vol||0.3,t+0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001,t+(dur||0.1)); o.start(t); o.stop(t+(dur||0.1)+0.03); }
+    return {
+      unlock(){ build(); if(ctx&&ctx.resume)ctx.resume(); },
+      step(){ beep(120+Math.random()*40,0.06,'triangle',0.16); },
+      wave(){ beep(540,0.08,'square',0.22); setTimeout(()=>beep(720,0.1,'square',0.2),85); },
+      think(){ beep(300,0.14,'sine',0.18); },
+      tap(){ beep(180,0.05,'square',0.18); },
+      minus(){ beep(300,0.08,'square',0.2); },                                 // lower blip
+      plus(){ beep(470,0.08,'square',0.2); },                                  // higher blip
+      start(){ beep(360,0.06,'square',0.22); setTimeout(()=>beep(560,0.10,'square',0.22),70); },  // little rising chirp
+      sparkle(){ [660,880,1175,1480].forEach((f,i)=>setTimeout(()=>beep(f,0.13,'square',0.16),i*70)); },
+      pop(){ beep(220,0.07,'square',0.26); setTimeout(()=>beep(160,0.08,'square',0.2),60); },
+      toggle(){ muted=!muted; build(); if(master)master.gain.value=muted?0:0.5; if(ctx&&ctx.resume)ctx.resume(); return muted; },
+      isMuted(){ return muted; }
+    };
+  })();
+
+  /* ============================================================
+     BACKDROP — sticker-book scatter (drawn once / on resize)
+     ============================================================ */
+  const backdrop=document.getElementById('backdrop'), bctx=backdrop.getContext('2d');
+  const DECOS=[
+    {k:'flower',x:0.12,y:0.20,r:30,o:0.16},{k:'sparkle',x:0.88,y:0.16,r:24,o:0.18},
+    {k:'flower',x:0.93,y:0.40,r:20,o:0.14},{k:'sparkle',x:0.07,y:0.46,r:16,o:0.15},
+    {k:'burst', x:0.15,y:0.83,r:30,o:0.14},{k:'sparkle',x:0.86,y:0.78,r:26,o:0.17},
+    {k:'flower',x:0.32,y:0.93,r:22,o:0.14},{k:'sparkle',x:0.64,y:0.90,r:14,o:0.12},
+    {k:'flower',x:0.78,y:0.58,r:18,o:0.12}
+  ];
+  function disc(c,cx,cy,r){ c.beginPath(); c.arc(cx,cy,r,0,Math.PI*2); c.fill(); }
+  function drawFlower(c,cx,cy,r){ const ring=r*0.6, pet=r*0.55;
+    for(let i=0;i<5;i++){ const a=i/5*Math.PI*2-Math.PI/2; disc(c,cx+Math.cos(a)*ring,cy+Math.sin(a)*ring,pet); }
+    disc(c,cx,cy,r*0.5); c.fillStyle=shade('#EE7D2B',0.7); disc(c,cx,cy,r*0.26); }
+  function drawSparkle(c,cx,cy,r){ c.beginPath(); for(let i=0;i<8;i++){ const a=i*Math.PI/4-Math.PI/2; const rad=i%2?r*0.3:r;
+    const px=cx+Math.cos(a)*rad, py=cy+Math.sin(a)*rad; i?c.lineTo(px,py):c.moveTo(px,py);} c.closePath(); c.fill(); }
+  function drawBurst(c,cx,cy,r){ const n=12,inner=r*0.34,hw=r*0.09;
+    for(let i=0;i<n;i++){ const a=i/n*Math.PI*2,dx=Math.cos(a),dy=Math.sin(a),px=-Math.sin(a),py=Math.cos(a);
+      c.beginPath(); c.moveTo(cx+dx*inner+px*hw,cy+dy*inner+py*hw); c.lineTo(cx+dx*r,cy+dy*r);
+      c.lineTo(cx+dx*inner-px*hw,cy+dy*inner-py*hw); c.closePath(); c.fill(); }
+    disc(c,cx,cy,r*0.3); }
+  function drawBackdrop(){ const w=innerWidth,h=innerHeight,dpr=DPR();
+    backdrop.width=w*dpr; backdrop.height=h*dpr; backdrop.style.width=w+'px'; backdrop.style.height=h+'px';
+    bctx.setTransform(dpr,0,0,dpr,0,0); bctx.clearRect(0,0,w,h);
+    for(const d of DECOS){ bctx.save(); bctx.globalAlpha=d.o; bctx.fillStyle='#EE7D2B';
+      const cx=d.x*w, cy=d.y*h;
+      if(d.k==='flower')drawFlower(bctx,cx,cy,d.r); else if(d.k==='sparkle')drawSparkle(bctx,cx,cy,d.r); else drawBurst(bctx,cx,cy,d.r);
+      bctx.restore(); } }
+
+  /* ============================================================
+     PICKERS
+     ============================================================ */
+  let chosenGremlin=-1, chosenSwatch=-1, isRandom=false, armed=null;
+  let spent=false;   // once you go Back, the gremlin refuses on Start (until refresh)
+
+  // render a static gremlin preview into a canvas (idle pose, colour)
+  function renderPreview(canvas, gIndex, colour, t){
+    const dpr=DPR(), w=canvas.clientWidth||canvas.width, h=canvas.clientHeight||canvas.height;
+    canvas.width=w*dpr; canvas.height=h*dpr; const c=canvas.getContext('2d');
+    c.setTransform(dpr,0,0,dpr,0,0); c.clearRect(0,0,w,h); c.imageSmoothingEnabled=false;
+    const bob=Math.sin((t||0)*2.2)* (h*0.012);
+    const px=Math.max(2, Math.floor(h*0.86/(GH)) );
+    const pose={face:1, legSwing:0.12, armL:Math.PI*0.74, armR:Math.PI*0.26, bob:0};
+    composeGremlin(GREMLINS[gIndex], pose);
+    drawComposed(c, w/2, h*0.94, px, colour, bob);
+  }
+
+  // gremlin picker tiles
+  const gremRow=document.getElementById('gremRow'), gremConfirm=document.getElementById('gremConfirm');
+  GREMLINS.forEach((g,i)=>{
+    const tile=document.createElement('div'); tile.className='gremTile'; tile.dataset.i=i;
+    const cv=document.createElement('canvas'); cv.width=84; cv.height=84;
+    const nm=document.createElement('div'); nm.className='nm'; nm.textContent=g.name;
+    tile.appendChild(cv); tile.appendChild(nm); gremRow.appendChild(tile);
+    renderPreview(cv, i, '#C9C2B4', 0);
+    tile.addEventListener('click',()=>{ SFX.unlock(); SFX.tap();
+      chosenGremlin=i; [...gremRow.children].forEach(t=>t.classList.toggle('sel', +t.dataset.i===i));
+      gremConfirm.disabled=false; });
+  });
+  gremConfirm.addEventListener('click',()=>{ if(chosenGremlin<0)return; SFX.tap();
+    document.getElementById('pickGremlin').classList.add('hidden');
+    document.getElementById('pickColour').classList.remove('hidden');
+    refreshColourPreview(); });
+
+  // colour picker
+  const swatchGrid=document.getElementById('swatchGrid'), colourConfirm=document.getElementById('colourConfirm');
+  const randomBtn=document.getElementById('randomBtn'), previewCv=document.getElementById('colourPreview');
+  SWATCHES.forEach((col,i)=>{
+    const s=document.createElement('div'); s.className='swatch'; s.dataset.i=i; s.style.background=col;
+    swatchGrid.appendChild(s);
+    s.addEventListener('click',()=>{ SFX.unlock(); SFX.tap();
+      chosenSwatch=i; isRandom=false; randomBtn.classList.remove('sel');
+      [...swatchGrid.children].forEach(x=>x.classList.toggle('sel', +x.dataset.i===i));
+      colourConfirm.disabled=false; refreshColourPreview(); });
+  });
+  randomBtn.addEventListener('click',()=>{ SFX.unlock(); SFX.tap();
+    isRandom=true; chosenSwatch=-1; randomBtn.classList.add('sel');
+    [...swatchGrid.children].forEach(x=>x.classList.remove('sel'));
+    colourConfirm.disabled=false; refreshColourPreview(); });
+
+  let previewColour='#C9C2B4', randomTick=0;
+  function currentPreviewColour(){
+    if(isRandom){ return RANDOM_POOL[Math.floor(randomTick)%RANDOM_POOL.length]; }
+    if(chosenSwatch>=0) return SWATCHES[chosenSwatch];
+    return '#C9C2B4';
+  }
+  function refreshColourPreview(){ previewColour=currentPreviewColour(); }
+  colourConfirm.addEventListener('click',()=>{ if(chosenSwatch<0 && !isRandom)return; SFX.tap();
+    const colour = isRandom ? RANDOM_POOL[Math.floor(Math.random()*RANDOM_POOL.length)] : SWATCHES[chosenSwatch];
+    const value  = isRandom ? KING_VALUE : VALUE_FOR_SWATCH[chosenSwatch];
+    const suit   = SUIT_FOR_GREMLIN[chosenGremlin];
+    armed = { value, suit, colour, gremlin:chosenGremlin };
+    updateCheat();
+    document.getElementById('pickColour').classList.add('hidden');
+    document.getElementById('stage').classList.add('show');
+    layout(); resetStage();
+  });
+
+  /* ============================================================
+     STAGE / SCENE ANIMATION
+     ============================================================ */
+  const stageEl=document.getElementById('stage'), scene=document.getElementById('scene'), sctx=scene.getContext('2d');
+  const startBtn=document.getElementById('start'), minusBtn=document.getElementById('minus'), plusBtn=document.getElementById('plus');
+  const greetTitle=document.getElementById('greetTitle');
+  let SW=0, SH=0, userScale=1;
+
+  function layout(){
+    const w=innerWidth,h=innerHeight,dpr=DPR();
+    SW=w; SH=h;
+    scene.width=w*dpr; scene.height=h*dpr; scene.style.width=w+'px'; scene.style.height=h+'px';
+    sctx.setTransform(dpr,0,0,dpr,0,0); sctx.imageSmoothingEnabled=false;
+  }
+  function floorY(){ return SH*0.74; }
+  function basePx(){ return Math.max(3, (SH*0.30/GH) * userScale); }
+
+  // ---- sequence ----
+  const Seq={ running:false, done:false, t:0, total:0, plan:null, lastStep:0, phaseFired:{}, mode:'reveal' };
+
+  function buildPlan(){
+    const walkDur = rand(3.0,3.8), waveDur=rand(1.3,1.8), thinkDur=rand(1.9,2.6);
+    const variant=Math.floor(rand(0,3));   // 0 conjure(spin-flip)  1 pull  2 deck-toss
+    const revealDur = variant===2 ? rand(5.0,5.6) : variant===0 ? rand(3.0,3.4) : rand(2.4,2.8);
+    const wps=[0.5];
+    let cur=0.5, paces= 2+Math.floor(rand(0,2.2));
+    for(let i=0;i<paces;i++){ let nx; do{ nx=clamp(0.5+rand(-0.22,0.22),0.28,0.72);}while(Math.abs(nx-cur)<0.12); wps.push(nx); cur=nx; }
+    wps.push(0.5); // settle centre for the wave/think
+    const tWalk=walkDur, tWave=tWalk+waveDur, tThink=tWave+thinkDur, tReveal=tThink+revealDur;
+    return { walkDur,waveDur,thinkDur,revealDur,wps,variant,
+             tWalk,tWave,tThink,tReveal, total:tReveal, waves:2+Math.floor(rand(0,2)) };
+  }
+  // "Again" routine: pace a little, then shake the head "no", then stop.
+  function buildDeclinePlan(){
+    const walkDur=rand(1.9,2.6), shakeDur=1.7;
+    const wps=[0.5]; let cur=0.5;
+    for(let i=0;i<2;i++){ let nx; do{ nx=clamp(0.5+rand(-0.18,0.18),0.34,0.66);}while(Math.abs(nx-cur)<0.10); wps.push(nx); cur=nx; }
+    wps.push(0.5);
+    return { walkDur, shakeDur, wps, tWalk:walkDur, total:walkDur+shakeDur };
+  }
+
+  function walkX(localT,dur,wps){ const segs=wps.length-1; const fr=clamp(localT/dur,0,1);
+    const fp=fr*segs; let i=Math.min(segs-1,Math.floor(fp)); let lt=easeInOut(fp-i); return lerp(wps[i],wps[i+1],lt); }
+
+  function blankFx(){ return { x:0.5, think:0, stop:0, cardScale:0, cardLift:0, cardFromY:0.52, cardFlip:1, cardFace:'front',
+                               cardRot:0, sparkle:0, deck:0, deckRot:0, deckY:0, deckAlpha:1 }; }
+
+  // walking gait → mutate a pose at phase ph
+  function gait(pose, ph){ pose.legSwing=Math.sin(ph)*0.42;
+    pose.armL=Math.PI*0.72 - Math.sin(ph)*0.28; pose.armR=Math.PI*0.28 + Math.sin(ph)*0.28;
+    pose.bob=-Math.abs(Math.sin(ph))*basePx()*0.5; }
+
+  // ---- the three reveals ----
+  function revealPull(lt,pose,fx){                       // 1: reach + lift the card up
+    pose.armL=Math.PI*1.30; pose.armR=-Math.PI*0.30; pose.bob=-Math.abs(Math.sin(lt*Math.PI))*basePx()*0.5;
+    const cs=easeOut(clamp(lt*1.35,0,1));
+    fx.cardScale=cs + (lt<0.6? Math.sin(lt/0.6*Math.PI)*0.07:0);
+    fx.cardLift=easeOut(clamp(lt*1.2,0,1)); fx.cardFace='front'; fx.cardFlip=1;
+    fx.cardRot=(1-cs)*Math.sin(lt*10)*0.3*(1-lt);
+    fx.sparkle= lt>0.55? (lt-0.55)/0.45 : 0;
+  }
+  function revealConjure(lt,pose,fx){                    // 0: sparkles, card spins in (back) then flips to front
+    pose.armL=Math.PI*1.18; pose.armR=-Math.PI*0.18; pose.bob=-Math.abs(Math.sin(lt*Math.PI))*basePx()*0.4;
+    fx.sparkle=clamp(lt/0.30,0,1) * (lt>0.82? (1-(lt-0.82)/0.18):1);
+    fx.cardLift=1;                                        // appears already up at head height
+    fx.cardScale=easeOut(clamp((lt-0.10)/0.42,0,1));
+    fx.cardRot=(lt<0.55 ? (1-clamp((lt-0.10)/0.45,0,1)) : 0) * Math.PI*2.2;   // spins as it arrives
+    if(lt<0.55){ fx.cardFace='back'; fx.cardFlip=1; }
+    else if(lt<0.80){ const f=(lt-0.55)/0.25, raw=Math.cos(f*Math.PI);
+      if(raw>=0){ fx.cardFace='back'; fx.cardFlip=Math.max(raw,0.05); }
+      else { fx.cardFace='front'; fx.cardFlip=Math.max(-raw,0.05); } }
+    else { fx.cardFace='front'; fx.cardFlip=1; }
+  }
+  function revealDeck(lt,pose,fx){                        // 2: walk off → return w/ deck → toss → card flies out
+    if(lt<0.16){ fx.x=lerp(0.5,1.30, easeInOut(lt/0.16)); pose.face=1; gait(pose, lt*16); }
+    else if(lt<0.30){ fx.x=1.30; pose.face=1; }           // off-screen
+    else if(lt<0.50){ const u=(lt-0.30)/0.20; fx.x=lerp(1.30,0.5, easeInOut(u)); pose.face=-1; gait(pose, lt*16);
+      fx.deck=1; fx.deckY=0; }                            // returns carrying the deck
+    else if(lt<0.64){ fx.x=0.5; pose.face=1; pose.legSwing=0.05; pose.armL=Math.PI*0.96; pose.armR=Math.PI*0.04;
+      pose.bob=Math.sin((lt-0.50)/0.14*Math.PI)*basePx()*0.3; fx.deck=1; }   // wind up
+    else { fx.x=0.5; pose.face=1; pose.armL=Math.PI*1.10; pose.armR=-Math.PI*0.10;
+      const up=easeOut(clamp((lt-0.64)/0.20,0,1));        // 0.64..0.84 toss the deck up to its apex (above the head)
+      fx.deck=1; fx.deckY=-0.30*up; fx.deckRot=(lt-0.64)*Math.PI*5; fx.deckAlpha=1-clamp((lt-0.82)/0.16,0,1);
+      const fu=clamp((lt-0.80)/0.20,0,1);                 // a card flies OUT of the deck, FROM its apex
+      fx.cardScale=easeOut(fu); fx.cardLift=easeOut(fu); fx.cardFace='front'; fx.cardFlip=1;
+      fx.cardFromY=0.22;                                  // launch point = the deck's apex height
+      fx.cardRot=(1-fu)*0.5*Math.sin(lt*14); fx.sparkle= fu>0.4?(fu-0.4)/0.6:0;
+    }
+  }
+
+  // returns the full draw state for time t (reveal sequence)
+  function computePose(t){
+    const p=Seq.plan;
+    const pose={ face:1, legSwing:0, armL:Math.PI*0.72, armR:Math.PI*0.28, bob:0, headShift:0 };
+    const fx=blankFx();
+    if(t < p.tWalk){
+      const lt=t; fx.x = walkX(lt, p.walkDur, p.wps);
+      const ahead = walkX(Math.min(lt+0.06,p.walkDur), p.walkDur, p.wps);
+      pose.face = (ahead - fx.x) < -0.0005 ? -1 : 1;
+      gait(pose, lt*3.0*Math.PI);
+    } else if(t < p.tWave){
+      const lt=(t-p.tWalk)/p.waveDur; fx.x=0.5; pose.face=1;
+      pose.armR = -Math.PI*0.18 + Math.sin(lt*p.waves*Math.PI*2)*0.32;
+      pose.armL = Math.PI*0.78; pose.bob=-Math.abs(Math.sin(lt*Math.PI))*basePx()*0.6;
+    } else if(t < p.tThink){
+      const lt=(t-p.tWave)/p.thinkDur; fx.x=0.5; pose.face=1;
+      fx.think = easeOut(clamp(lt*2.2,0,1)) * (lt>0.85? (1-(lt-0.85)/0.15) : 1);
+      pose.armR = Math.PI*0.22 + Math.sin(lt*6)*0.05; pose.armL = Math.PI*0.78;
+      pose.bob = Math.sin(lt*5)*basePx()*0.12;
+    } else {
+      const lt=clamp((t-p.tThink)/p.revealDur,0,1); fx.x=0.5; pose.face=1;
+      if(p.variant===0) revealConjure(lt,pose,fx);
+      else if(p.variant===2) revealDeck(lt,pose,fx);
+      else revealPull(lt,pose,fx);
+    }
+    return {pose,fx};
+  }
+
+  // "Again" → pace, then shake head "no", then stop.
+  function computeDeclinePose(t){
+    const p=Seq.plan;
+    const pose={ face:1, legSwing:0, armL:Math.PI*0.74, armR:Math.PI*0.26, bob:0, headShift:0 };
+    const fx=blankFx();
+    if(t < p.tWalk){
+      fx.x=walkX(t,p.walkDur,p.wps);
+      const ahead=walkX(Math.min(t+0.06,p.walkDur),p.walkDur,p.wps);
+      pose.face=(ahead-fx.x)<-0.0005?-1:1; gait(pose, t*3.0*Math.PI);
+    } else {
+      fx.x=0.5; pose.face=1;
+      const u=clamp((t-p.tWalk)/p.shakeDur,0,1), env=Math.sin(u*Math.PI);   // ramp in/out
+      pose.headShift = Math.sin(u*Math.PI*2*5) * 2.2 * env;                  // ~5 shakes, ±2.2 cells
+      pose.armL=Math.PI*0.80; pose.armR=Math.PI*0.20;
+      fx.stop = clamp(u*4,0,1) * (u>0.85? (1-(u-0.85)/0.15) : 1);            // "no" bubble pops up
+    }
+    return {pose,fx};
+  }
+
+  // pixel "?" thought glyph (string rows — drawStrGrid expects strings, not parsed codes)
+  const QMARK=[".bb.","b..b","...b","..b.","..b.","....","..b."];
+  const PXDISC4=[".##.","####","####",".##."];
+  const PXDISC3=[".#.","###",".#."];
+
+  // screen-space pixel rounded-rect (bevelled corners): wC×hC cells of `col` from (x,y)
+  function pxRect(ctx, x, y, wC, hC, cell, col){
+    ctx.fillStyle=col; const steps=[2,1];
+    for(let ry=0;ry<hC;ry++){ const fe=Math.min(ry,hC-1-ry), inset=fe<steps.length?steps[fe]:0;
+      ctx.fillRect(Math.round(x+inset*cell), Math.round(y+ry*cell), Math.ceil((wC-2*inset)*cell)+1, Math.ceil(cell)+1); }
+  }
+  // pixel blob with an ink outline (edge cells = ink, interior = fill)
+  function drawPxBlob(ctx, grid, x, y, cell, fill, ink){
+    const H=grid.length,W=grid[0].length, on=(r,c)=>r>=0&&c>=0&&r<H&&c<W&&grid[r][c]!=='.'&&grid[r][c]!==' ';
+    for(let r=0;r<H;r++)for(let c=0;c<W;c++){ if(!on(r,c))continue;
+      const edge=!on(r-1,c)||!on(r+1,c)||!on(r,c-1)||!on(r,c+1);
+      ctx.fillStyle=edge?ink:fill; ctx.fillRect(Math.round(x+c*cell),Math.round(y+r*cell),Math.ceil(cell),Math.ceil(cell)); }
+  }
+  // white pixel bubble (ink outline), wC×hC cells, top-left (x,y)
+  function pxBubble(ctx, x, y, wC, hC, cell){
+    pxRect(ctx, x, y, wC, hC, cell, '#1C1B19');
+    pxRect(ctx, x+cell, y+cell, wC-2, hC-2, cell, '#FFFDF8');
+  }
+  // ascending dots leading FROM the head (small) up to the bubble (large)
+  function pxTrail(ctx, hx, hy, bx, by, cell){
+    const stops=[0.0,0.5,1.0], sizes=[cell*0.5,cell*0.72,cell*0.95], grids=[PXDISC3,PXDISC3,PXDISC4];
+    for(let i=0;i<3;i++){ const tt=stops[i], x=hx+(bx-hx)*tt, y=hy+(by-hy)*tt, g=grids[i], s=sizes[i];
+      drawPxBlob(ctx, g, x-g[0].length*s/2, y-g.length*s/2, s, '#FFFDF8','#1C1B19'); }
+  }
+
+  // one pixel thought bubble (off to the upper-right) with three bobbing "?"; dots rise from the head
+  function drawThink(ctx, gx, gy, alpha, t){
+    if(alpha<=0.01) return;
+    const cell=Math.max(2, basePx()*0.42);
+    const qw=QMARK[0].length, qh=QMARK.length, bwC=3*qw+2+4, bhC=qh+4;
+    const rise=Math.sin(t*2)*(basePx()*0.18);
+    let bx=Math.round(gx + basePx()*1.6), by=Math.round(gy - bhC*cell - basePx()*2.2 + rise);
+    bx=Math.min(bx, SW - bwC*cell - 8); by=Math.max(by, Math.round(0.05*SH));
+    ctx.save(); ctx.globalAlpha=alpha;
+    pxTrail(ctx, gx+basePx()*0.4, gy-basePx()*0.1, bx+cell*1.5, by+bhC*cell, cell);
+    pxBubble(ctx, bx, by, bwC, bhC, cell);
+    for(let k=0;k<3;k++){ const qx=bx+(2+k*(qw+1))*cell, qy=by+2*cell + Math.sin(t*4+k*0.8)*cell*0.5;
+      drawStrGrid(ctx, QMARK, qx, qy, cell, '#1C1B19'); }
+    ctx.restore();
+  }
+
+  // pixel "no/stop" sign (red ring + diagonal slash)
+  function drawStopSign(ctx, cx, cy, Rc, cell){
+    const red='#E5484D', dark=shade(red,0.72);
+    for(let gyc=-Rc; gyc<=Rc; gyc++) for(let gxc=-Rc; gxc<=Rc; gxc++){
+      const d=Math.hypot(gxc,gyc);
+      const ring = d<=Rc+0.3 && d>=Rc-1.8;                  // thick red ring
+      const slash = Math.abs(gxc-gyc)<=1.0 && d<=Rc-0.4;    // thick diagonal slash
+      if(ring||slash){ ctx.fillStyle=(gxc+gyc>Rc*0.5)?dark:red;
+        ctx.fillRect(Math.round(cx+gxc*cell),Math.round(cy+gyc*cell),Math.ceil(cell),Math.ceil(cell)); } }
+  }
+  // big pixel speech bubble with the "no" sign — rises during the head-shake
+  function drawStopBubble(ctx, gx, gy, alpha, t){
+    if(alpha<=0.01) return;
+    const cell=Math.max(2, basePx()*0.62), Rc=5, bwC=2*Rc+6, bhC=2*Rc+6;
+    let bx=Math.round(gx + basePx()*1.6);
+    let by=Math.round(gy - bhC*cell - basePx()*2.0 - easeOut(alpha)*cell*1.0);
+    bx=Math.min(bx, SW - bwC*cell - 8); by=Math.max(by, Math.round(0.05*SH));   // keep on screen
+    ctx.save(); ctx.globalAlpha=Math.min(1,alpha*1.5);
+    pxTrail(ctx, gx+basePx()*0.4, gy-basePx()*0.1, bx+cell*1.5, by+bhC*cell, cell);
+    pxBubble(ctx, bx, by, bwC, bhC, cell);
+    drawStopSign(ctx, bx+bwC*cell/2, by+bhC*cell/2, Rc, cell);
+    ctx.restore();
+  }
+  function roundRect(ctx,x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r);
+    ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+  function circle(ctx,x,y,r){ ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); }
+
+  // pixellated (starlight) sparkles bursting outward
+  function drawSparkles(ctx, cx, cy, spread, t){
+    if(t<=0) return; const n=8;
+    for(let i=0;i<n;i++){ const a=i/n*Math.PI*2 + t*1.0; const rr=spread*(0.45+0.55*easeOut(clamp(t*1.4,0,1)));
+      const px=cx+Math.cos(a)*rr, py=cy+Math.sin(a)*rr;
+      const tw=(0.55+Math.sin(t*7+i)*0.45)*(1-clamp((t-0.7)/0.3,0,1)); if(tw<=0) continue;
+      const sp=Math.max(1, spread*0.013*tw*4);
+      drawStrGrid(ctx, STARLIGHT, px-3.5*sp, py-3.5*sp, sp, i%2?'#F4C740':'#EE7D2B'); }
+  }
+
+  function drawScene(t){
+    sctx.clearRect(0,0,SW,SH);
+    let state;
+    const compute = Seq.mode==='decline' ? computeDeclinePose : computePose;
+    if(Seq.running){ state=compute(Seq.t); }
+    else if(Seq.done){ state=compute(Seq.plan.total); }   // hold final frame
+    else { // idle breathing
+      const pose={face:1, legSwing:0.05+Math.sin(t*1.6)*0.02, armL:Math.PI*0.74, armR:Math.PI*0.26,
+                  bob:Math.sin(t*2.2)*basePx()*0.18, headShift:0};
+      state={pose, fx:blankFx()};
+    }
+    const {pose,fx}=state;
+    const px=basePx(), cx=fx.x*SW, fy=floorY();
+    // ground shadow
+    sctx.save(); sctx.globalAlpha=0.12; sctx.fillStyle='#1C1B19';
+    sctx.beginPath(); sctx.ellipse(cx, fy+px*0.4, px*5.5, px*1.4, 0,0,Math.PI*2); sctx.fill(); sctx.restore();
+    if(!armed) return;
+    composeGremlin(GREMLINS[armed.gremlin], pose);
+    const info=drawComposed(sctx, cx, fy, px, armed.colour, pose.bob);
+    if(fx.think>0) drawThink(sctx, cx, info.oy, fx.think, t);
+    if(fx.stop>0) drawStopBubble(sctx, cx, info.oy, fx.stop, t);
+    // the reveal card — drawn BEFORE the deck so it rises out from BEHIND the spinning deck
+    let cardCx, cardCy;
+    if(fx.cardScale>0){
+      const sc=Math.min(fx.cardScale,1.06), cardH=SH*0.30*sc, cardW=cardH*CW/CH;
+      const headTopY=info.oy + OY*px;                       // top of the gremlin's head
+      const target=Math.max(headTopY + 3*px - cardH/2, 0.06*SH + cardH/2);  // rest above the crown
+      cardCx=cx; cardCy=lerp((fx.cardFromY==null?0.52:fx.cardFromY)*SH, target, fx.cardLift);
+      drawRevealCard(sctx, cardCx, cardCy, cardW, cardH, armed, clamp(fx.cardScale*1.4,0,1),
+                     (fx.cardFlip==null?1:fx.cardFlip), fx.cardRot||0, fx.cardFace);
+    }
+    // deck of cards (deck-toss reveal) — IN FRONT of the emerging card
+    if(fx.deck>0){
+      const dW=SH*0.135, dH=dW*1.42, dCy=0.52*SH + (fx.deckY||0)*SH;
+      drawDeck(sctx, cx, dCy, dW, dH, (fx.deckAlpha==null?1:fx.deckAlpha), fx.deckRot||0);
+    }
+    // sparkles on top of everything
+    if(fx.cardScale>0 && fx.sparkle>0) drawSparkles(sctx, cardCx, cardCy, SH*0.22, fx.sparkle);
+  }
+
+  // ---- sound triggers during live playback ----
+  function fireSounds(){
+    if(SFX.isMuted()||!Seq.running) return;
+    const p=Seq.plan, t=Seq.t;
+    if(Seq.mode==='decline'){
+      if(t<p.tWalk){ const step=Math.floor(t*3.0*2); if(step!==Seq.lastStep){ Seq.lastStep=step; SFX.step(); } }
+      else if(!Seq.phaseFired.shake){ Seq.phaseFired.shake=true; SFX.think(); }
+      return;
+    }
+    if(t<p.tWalk){ const step=Math.floor(t*3.0*2); if(step!==Seq.lastStep){ Seq.lastStep=step; SFX.step(); } }
+    if(t>=p.tWalk && !Seq.phaseFired.wave){ Seq.phaseFired.wave=true; SFX.wave(); }
+    if(t>=p.tWave && !Seq.phaseFired.think){ Seq.phaseFired.think=true; SFX.think(); }
+    if(t>=p.tThink && !Seq.phaseFired.reveal){ Seq.phaseFired.reveal=true; SFX.pop(); SFX.sparkle(); }
+  }
+
+  function startSequence(){
+    SFX.unlock(); SFX.start();
+    Seq.mode='reveal'; Seq.plan=buildPlan(); Seq.t=0; Seq.running=true; Seq.done=false; Seq.lastStep=-1; Seq.phaseFired={};
+    startBtn.disabled=true; minusBtn.disabled=true; plusBtn.disabled=true;
+    greetTitle.innerHTML='Watch closely…<small>&nbsp;</small>';
+  }
+  function startDecline(){
+    SFX.unlock(); SFX.start();
+    Seq.mode='decline'; Seq.plan=buildDeclinePlan(); Seq.t=0; Seq.running=true; Seq.done=false; Seq.lastStep=-1; Seq.phaseFired={};
+    startBtn.disabled=true; minusBtn.disabled=true; plusBtn.disabled=true;
+    greetTitle.innerHTML='Hmm…<small>&nbsp;</small>';
+  }
+  function endSequence(){
+    Seq.running=false; Seq.done=true;
+    startBtn.disabled=false; minusBtn.disabled=false; plusBtn.disabled=false; startBtn.textContent='Again';
+    if(Seq.mode==='decline') greetTitle.innerHTML='No more!<small>that’s all</small>';
+    else greetTitle.innerHTML='Ta-daa!<small>'+valueWord(armed.value)+' of '+SUIT_NAME[armed.suit]+'</small>';
+  }
+  function resetStage(){
+    Seq.mode='reveal'; Seq.running=false; Seq.done=false; Seq.t=0; Seq.plan=buildPlan();
+    startBtn.disabled=false; minusBtn.disabled=false; plusBtn.disabled=false; startBtn.textContent='Start';
+    greetTitle.innerHTML='Meet '+GREMLINS[armed.gremlin].name+'<small>tap start</small>';
+  }
+
+  // First press = the reveal. After that (or once "spent" via Back) = the gremlin refuses.
+  startBtn.addEventListener('click',()=>{ if(Seq.running)return; if(spent || Seq.done) startDecline(); else startSequence(); });
+
+  // Back → return to gremlin selection; from now on the gremlin only refuses (clears on refresh).
+  const backBtn=document.getElementById('back');
+  function resetPickers(){
+    chosenGremlin=-1; chosenSwatch=-1; isRandom=false;
+    [...gremRow.children].forEach(t=>t.classList.remove('sel'));
+    [...swatchGrid.children].forEach(s=>s.classList.remove('sel'));
+    randomBtn.classList.remove('sel');
+    gremConfirm.disabled=true; colourConfirm.disabled=true;
+  }
+  backBtn.addEventListener('click',()=>{ SFX.unlock(); SFX.tap();
+    spent=true; Seq.running=false; Seq.done=false; Seq.mode='reveal';
+    stageEl.classList.remove('show');
+    document.getElementById('pickColour').classList.add('hidden');
+    document.getElementById('pickGremlin').classList.remove('hidden');
+    resetPickers();
+  });
+  function resize(d){ userScale=clamp(userScale+d, 0.6, 2.0); }
+  minusBtn.addEventListener('click',()=>{ if(Seq.running)return; SFX.unlock(); SFX.minus(); resize(-0.18); });
+  plusBtn.addEventListener('click', ()=>{ if(Seq.running)return; SFX.unlock(); SFX.plus(); resize(+0.18); });
+
+  /* ============================================================
+     MAIN LOOP
+     ============================================================ */
+  let last=0, prevColour='#C9C2B4';
+  function frame(ts){
+    const t=ts/1000; const dt=last? Math.min(t-last,0.05):0.016; last=t;
+    if(Seq.running && !Seq.paused){ Seq.t+=dt; fireSounds(); if(Seq.t>=Seq.plan.total){ Seq.t=Seq.plan.total; endSequence(); } }
+    // live colour-picker preview (random shimmer)
+    if(!document.getElementById('pickColour').classList.contains('hidden')){
+      if(isRandom) randomTick+=dt*6;
+      const col=currentPreviewColour();
+      renderPreview(previewCv, chosenGremlin<0?0:chosenGremlin, col, t);
+    }
+    if(stageEl.classList.contains('show')) drawScene(t);
+    requestAnimationFrame(frame);
+  }
+
+  /* ============================================================
+     CHROME — info, mute, performer cheat
+     ============================================================ */
+  const info=document.getElementById('info'), infoCard=document.getElementById('infoCard');
+  info.addEventListener('click',e=>{ e.stopPropagation(); infoCard.classList.toggle('show'); });
+  document.addEventListener('click',e=>{ if(!e.target.closest('#info,#infoCard')) infoCard.classList.remove('show'); });
+
+  const muteBtn=document.getElementById('mute'), waveEl=document.getElementById('wave');
+  function showSound(m){ muteBtn.style.opacity=m?0.5:0.85; waveEl.style.display=m?'none':''; }
+  showSound(false);   // sound ON by default — tap the icon to mute
+  muteBtn.addEventListener('click',()=>{ showSound(SFX.toggle()); });
+
+  // performer cheat: triple-tap footer
+  const footer=document.getElementById('footer'), cheat=document.getElementById('cheat');
+  const cheatArmed=document.getElementById('cheatArmed');
+  let taps=0, tapT=0;
+  function updateCheat(){ cheatArmed.textContent = armed
+    ? 'Armed: '+valueLabel(armed.value)+' '+SUIT_GLYPH[armed.suit]+' ('+valueLabel(armed.value)+' of '+SUIT_NAME[armed.suit]+')'
+    : 'Armed: —'; }
+  footer.addEventListener('click',()=>{ const now=performance.now(); if(now-tapT>600)taps=0; taps++; tapT=now;
+    if(taps>=3){ taps=0; updateCheat(); cheat.classList.add('show'); } });
+  document.getElementById('cheatClose').addEventListener('click',()=>cheat.classList.remove('show'));
+  cheat.addEventListener('click',e=>{ if(e.target===cheat) cheat.classList.remove('show'); });
+
+  /* ============================================================
+     BOOT
+     ============================================================ */
+  drawBackdrop(); layout();
+  let rzT; window.addEventListener('resize',()=>{ clearTimeout(rzT); rzT=setTimeout(()=>{ drawBackdrop(); layout();
+    [...gremRow.children].forEach((t,i)=>renderPreview(t.querySelector('canvas'), i, '#C9C2B4', 0)); },120); });
+  requestAnimationFrame(frame);
+
+  /* ---- debug hooks (headless preview tab pauses rAF; drive manually) ---- */
+  window.__gremlin={
+    pickGremlin(i){ chosenGremlin=i; },
+    pickColour(i){ chosenSwatch=i; isRandom=false; },
+    pickRandom(){ isRandom=true; chosenSwatch=-1; },
+    arm(){ const colour=isRandom?RANDOM_POOL[0]:SWATCHES[chosenSwatch];
+      armed={ value: isRandom?KING_VALUE:VALUE_FOR_SWATCH[chosenSwatch], suit:SUIT_FOR_GREMLIN[chosenGremlin], colour, gremlin:chosenGremlin };
+      document.getElementById('pickGremlin').classList.add('hidden');
+      document.getElementById('pickColour').classList.add('hidden');
+      stageEl.classList.add('show'); layout(); updateCheat(); return armed; },
+    seq(){ startSequence(); return Seq.plan; },
+    declineSeq(){ startDecline(); return Seq.plan; },
+    step(dt){ Seq.t=clamp(Seq.t+(dt||0.1),0,Seq.plan?Seq.plan.total:0); drawScene(Seq.t); return Seq.t; },
+    setT(t){ if(!Seq.plan)Seq.plan=buildPlan(); Seq.running=true; Seq.t=t; drawScene(t); },
+    freeze(t){ if(!Seq.plan)Seq.plan=buildPlan(); Seq.running=true; Seq.paused=true; Seq.done=false; Seq.t=t; drawScene(t); return t; },
+    resume(){ Seq.paused=false; },
+    render(t){ drawScene(t||0); },
+    state(){ return {chosenGremlin,chosenSwatch,isRandom,armed,running:Seq.running,t:Seq.t,total:Seq.plan&&Seq.plan.total}; }
+  };
+})();
+</script>
+</body>
+</html>
