@@ -34,9 +34,10 @@
     secret input. Triple-tap the footer for an on-screen performer cheat sheet.
     • REPEAT: after a reveal the gremlin refuses. LONG-PRESS anywhere (~0.65s)
       to secretly arm one more reveal — the next card in a Si Stebbins CHaSeD
-      stack (value +3, suit ♣→♥→♠→♦; e.g. 4♥ → 7♠). The "i" glyph in the
-      bottom-left info button disappears while armed and returns when the
-      reveal completes. Repeatable indefinitely; refresh for a fresh chain.
+      stack (value +3, suit ♣→♥→♠→♦; e.g. 4♥ → 7♠). The moment the hold
+      registers, the "i" glyph in the bottom-left info button vanishes —
+      your confirmation — and it returns as soon as you let go.
+      Repeatable indefinitely; refresh for a fresh chain.
     • URL FORCE: open with ?card=4H (A,2–10,J,Q,K + C/H/S/D, Reverse-style)
       to force the FIRST reveal regardless of what is picked — the query
       string is wiped from the address bar instantly, before first paint.
@@ -1028,7 +1029,7 @@
     if(Seq.mode==='decline') greetTitle.innerHTML='No more!<small>that’s all</small>';
     else{
       lastRevealed={ value:armed.value, suit:armed.suit };
-      gestureArmed=false; setInfoGlyph(true);   // the "i" returns once the reveal is done
+      gestureArmed=false;
       updateCheat();
       greetTitle.innerHTML='Ta-daa!<small>'+valueWord(armed.value)+' of '+SUIT_NAME[armed.suit]+'</small>';
     }
@@ -1095,13 +1096,17 @@
   document.addEventListener('click',e=>{ if(!e.target.closest('#info,#infoCard')) infoCard.classList.remove('show'); });
 
   // ---- secret gesture: long-press anywhere → arm one more reveal ----
+  // The "i" glyph blinks out the moment the hold registers (the performer's
+  // confirmation) and comes back as soon as the finger lets go.
   const infoGlyph=document.getElementById('infoGlyph');
   function setInfoGlyph(show){ infoGlyph.style.visibility = show ? '' : 'hidden'; }
   const LP_MS=650, LP_TOL=14;   // hold time + finger-jitter tolerance (px)
   let lpTimer=null, lpX=0, lpY=0, lpSwallowClick=false;
   function lpCancel(){ if(lpTimer){ clearTimeout(lpTimer); lpTimer=null; } }
+  function lpRelease(e){ if(e && !e.isPrimary) return; lpCancel(); setInfoGlyph(true); }
   document.addEventListener('pointerdown',e=>{
     if(!e.isPrimary || (e.pointerType==='mouse' && e.button!==0)) return;
+    setInfoGlyph(true);   // heal a release that was missed (e.g. mouse left the window)
     lpSwallowClick=false; lpX=e.clientX; lpY=e.clientY;
     lpCancel();
     lpTimer=setTimeout(()=>{ lpTimer=null; lpSwallowClick=true;
@@ -1110,8 +1115,8 @@
   document.addEventListener('pointermove',e=>{
     if(lpTimer && (Math.abs(e.clientX-lpX)>LP_TOL || Math.abs(e.clientY-lpY)>LP_TOL)) lpCancel();
   });
-  document.addEventListener('pointerup',lpCancel);
-  document.addEventListener('pointercancel',lpCancel);
+  document.addEventListener('pointerup',lpRelease);
+  document.addEventListener('pointercancel',lpRelease);
   // a long-press must not also register as a tap on whatever sits under the finger
   document.addEventListener('click',e=>{ if(lpSwallowClick){ lpSwallowClick=false; e.preventDefault(); e.stopPropagation(); } },true);
 
@@ -1167,7 +1172,7 @@
     freeze(t){ if(!Seq.plan)Seq.plan=buildPlan(); Seq.running=true; Seq.paused=true; Seq.done=false; Seq.t=t; drawScene(t); return t; },
     resume(){ Seq.paused=false; },
     render(t){ drawScene(t||0); },
-    gesture(){ gestureArmed=true; setInfoGlyph(false); updateCheat(); },
+    gesture(){ gestureArmed=true; updateCheat(); },
     pressStart(){ startBtn.click(); },
     state(){ return {chosenGremlin,chosenSwatch,isRandom,armed,running:Seq.running,t:Seq.t,total:Seq.plan&&Seq.plan.total,
                      mode:Seq.mode,done:Seq.done,spent,gestureArmed,lastRevealed,urlForce}; }
