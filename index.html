@@ -5,6 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#FBF6EA">
 <title>Gremlin</title>
+<script>
+/* boot: consume a Reverse-style ?card=4H force & scrub it from the URL instantly */
+(function(){
+  try{
+    var q=new URLSearchParams(location.search), c=(q.get('card')||'').trim().toUpperCase();
+    if(!c) return;
+    window.__seed=c;
+    q.delete('card'); var rest=q.toString();
+    history.replaceState(null,'',location.pathname+(rest?'?'+rest:'')+location.hash);
+  }catch(e){}
+})();
+</script>
 <!--
   ===========================================================================
   GREMLIN — a lite web version of the "A Little Guy" app, in the Little Guy
@@ -20,6 +32,14 @@
     • So the card the gremlin produces = colour(value) + gremlin(suit).
     Choosing a gremlin + a colour looks like innocent customisation; it is the
     secret input. Triple-tap the footer for an on-screen performer cheat sheet.
+    • REPEAT: after a reveal the gremlin refuses. LONG-PRESS anywhere (~0.65s)
+      to secretly arm one more reveal — the next card in a Si Stebbins CHaSeD
+      stack (value +3, suit ♣→♥→♠→♦; e.g. 4♥ → 7♠). The "i" glyph in the
+      bottom-left info button disappears while armed and returns when the
+      reveal completes. Repeatable indefinitely; refresh for a fresh chain.
+    • URL FORCE: open with ?card=4H (A,2–10,J,Q,K + C/H/S/D, Reverse-style)
+      to force the FIRST reveal regardless of what is picked — the query
+      string is wiped from the address bar instantly, before first paint.
   ===========================================================================
 -->
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='1.5' y='1.5' width='29' height='29' rx='7' fill='%23FBF6EA' stroke='%231C1B19' stroke-width='2'/><rect x='8' y='5' width='4' height='4' fill='%23EE7D2B'/><rect x='20' y='5' width='4' height='4' fill='%23EE7D2B'/><rect x='7' y='9' width='18' height='15' rx='4' fill='%23EE7D2B'/><rect x='11' y='13' width='3' height='4' fill='%23FFFDF8'/><rect x='18' y='13' width='3' height='4' fill='%23FFFDF8'/><rect x='12' y='14' width='2' height='2' fill='%231C1B19'/><rect x='19' y='14' width='2' height='2' fill='%231C1B19'/></svg>">
@@ -179,7 +199,7 @@
   <!-- ============ chrome ============ -->
   <button id="info" aria-label="about" title="About">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <circle cx="12" cy="12" r="9.4"/><line x1="12" y1="11" x2="12" y2="16.5"/><circle cx="12" cy="7.6" r="1" fill="currentColor" stroke="none"/>
+      <circle cx="12" cy="12" r="9.4"/><g id="infoGlyph"><line x1="12" y1="11" x2="12" y2="16.5"/><circle cx="12" cy="7.6" r="1" fill="currentColor" stroke="none"/></g>
     </svg>
   </button>
   <div id="infoCard">
@@ -206,6 +226,11 @@
         <b>Colours</b> (reading order)<br>
         A 2 3 4 5 6 7 8 9 10 J Q<br>Random button = King
       </div>
+      <div class="row" style="margin-top:10px">
+        <b>Repeat</b> — long-press anywhere to arm<br>
+        the next stack card (+3, ♣→♥→♠→♦)<br>
+        <b>Force</b> — open with ?card=4H
+      </div>
       <div class="armed" id="cheatArmed">Armed: —</div>
       <button class="sticker big confirm close" id="cheatClose">Close</button>
     </div>
@@ -222,6 +247,26 @@
   // Swatch index 0..11 (reading order) → card value 1..12 (A..Q). Random → 13 (King).
   const VALUE_FOR_SWATCH = [1,2,3,4,5,6,7,8,9,10,11,12];
   const KING_VALUE = 13;
+
+  // Si Stebbins stack (classic CHaSeD): next card = value +3, next suit in ♣ ♥ ♠ ♦.
+  // SUIT_FOR_GREMLIN above is already the CHaSeD cycle, so reuse it. 4♥ → 7♠ → 10♦ → K♣ …
+  function stebbinsNext(c){
+    return { value: ((c.value-1+3)%13)+1,
+             suit: SUIT_FOR_GREMLIN[(SUIT_FOR_GREMLIN.indexOf(c.suit)+1)%4] };
+  }
+
+  // Reverse-style URL force (?card=4H), stashed by the boot script in <head>
+  // after it scrubbed the query string. Forces the FIRST reveal only.
+  const urlForce=(function(){
+    const s=window.__seed; try{ delete window.__seed; }catch(e){}
+    if(!s) return null;
+    const SU={C:'clubs',H:'hearts',S:'spades',D:'diamonds'};
+    const suit=SU[s.slice(-1)]; if(!suit) return null;
+    const vs=s.slice(0,-1)==='T'?'10':s.slice(0,-1);
+    const VAL={A:1,'2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,'10':10,J:11,Q:12,K:13};
+    const value=VAL[vs]; if(!value) return null;
+    return {value,suit};
+  })();
 
   // 12 swatch colours, reading order (A → Q).
   const SWATCHES = [
@@ -561,7 +606,9 @@
      PICKERS
      ============================================================ */
   let chosenGremlin=-1, chosenSwatch=-1, isRandom=false, armed=null;
-  let spent=false;   // once you go Back, the gremlin refuses on Start (until refresh)
+  let spent=false;        // once you go Back, the gremlin refuses on Start
+  let lastRevealed=null;  // last card actually revealed → seeds the stack chain
+  let gestureArmed=false; // secret long-press done → one more reveal allowed
 
   // render a static gremlin preview into a canvas (idle pose, colour)
   function renderPreview(canvas, gIndex, colour, t){
@@ -620,6 +667,7 @@
     const value  = isRandom ? KING_VALUE : VALUE_FOR_SWATCH[chosenSwatch];
     const suit   = SUIT_FOR_GREMLIN[chosenGremlin];
     armed = { value, suit, colour, gremlin:chosenGremlin };
+    if(urlForce && !lastRevealed){ armed.value=urlForce.value; armed.suit=urlForce.suit; }  // first reveal forced via URL
     updateCheat();
     document.getElementById('pickColour').classList.add('hidden');
     document.getElementById('stage').classList.add('show');
@@ -978,7 +1026,12 @@
     Seq.running=false; Seq.done=true;
     startBtn.disabled=false; minusBtn.disabled=false; plusBtn.disabled=false; startBtn.textContent='Again';
     if(Seq.mode==='decline') greetTitle.innerHTML='No more!<small>that’s all</small>';
-    else greetTitle.innerHTML='Ta-daa!<small>'+valueWord(armed.value)+' of '+SUIT_NAME[armed.suit]+'</small>';
+    else{
+      lastRevealed={ value:armed.value, suit:armed.suit };
+      gestureArmed=false; setInfoGlyph(true);   // the "i" returns once the reveal is done
+      updateCheat();
+      greetTitle.innerHTML='Ta-daa!<small>'+valueWord(armed.value)+' of '+SUIT_NAME[armed.suit]+'</small>';
+    }
   }
   function resetStage(){
     Seq.mode='reveal'; Seq.running=false; Seq.done=false; Seq.t=0; Seq.plan=buildPlan();
@@ -986,8 +1039,16 @@
     greetTitle.innerHTML='Meet '+GREMLINS[armed.gremlin].name+'<small>tap start</small>';
   }
 
-  // First press = the reveal. After that (or once "spent" via Back) = the gremlin refuses.
-  startBtn.addEventListener('click',()=>{ if(Seq.running)return; if(spent || Seq.done) startDecline(); else startSequence(); });
+  // First press = the reveal. After that (or once "spent" via Back) the gremlin
+  // refuses — unless the secret long-press has armed one more reveal, in which
+  // case it produces the next Si Stebbins card after the last one revealed.
+  startBtn.addEventListener('click',()=>{ if(Seq.running)return;
+    if(spent || Seq.done){
+      if(gestureArmed){
+        if(lastRevealed){ const nx=stebbinsNext(lastRevealed); armed.value=nx.value; armed.suit=nx.suit; }
+        updateCheat(); startSequence();
+      } else startDecline();
+    } else startSequence(); });
 
   // Back → return to gremlin selection; from now on the gremlin only refuses (clears on refresh).
   const backBtn=document.getElementById('back');
@@ -1033,6 +1094,27 @@
   info.addEventListener('click',e=>{ e.stopPropagation(); infoCard.classList.toggle('show'); });
   document.addEventListener('click',e=>{ if(!e.target.closest('#info,#infoCard')) infoCard.classList.remove('show'); });
 
+  // ---- secret gesture: long-press anywhere → arm one more reveal ----
+  const infoGlyph=document.getElementById('infoGlyph');
+  function setInfoGlyph(show){ infoGlyph.style.visibility = show ? '' : 'hidden'; }
+  const LP_MS=650, LP_TOL=14;   // hold time + finger-jitter tolerance (px)
+  let lpTimer=null, lpX=0, lpY=0, lpSwallowClick=false;
+  function lpCancel(){ if(lpTimer){ clearTimeout(lpTimer); lpTimer=null; } }
+  document.addEventListener('pointerdown',e=>{
+    if(!e.isPrimary || (e.pointerType==='mouse' && e.button!==0)) return;
+    lpSwallowClick=false; lpX=e.clientX; lpY=e.clientY;
+    lpCancel();
+    lpTimer=setTimeout(()=>{ lpTimer=null; lpSwallowClick=true;
+      gestureArmed=true; setInfoGlyph(false); updateCheat(); }, LP_MS);
+  });
+  document.addEventListener('pointermove',e=>{
+    if(lpTimer && (Math.abs(e.clientX-lpX)>LP_TOL || Math.abs(e.clientY-lpY)>LP_TOL)) lpCancel();
+  });
+  document.addEventListener('pointerup',lpCancel);
+  document.addEventListener('pointercancel',lpCancel);
+  // a long-press must not also register as a tap on whatever sits under the finger
+  document.addEventListener('click',e=>{ if(lpSwallowClick){ lpSwallowClick=false; e.preventDefault(); e.stopPropagation(); } },true);
+
   const muteBtn=document.getElementById('mute'), waveEl=document.getElementById('wave');
   function showSound(m){ muteBtn.style.opacity=m?0.5:0.85; waveEl.style.display=m?'none':''; }
   showSound(false);   // sound ON by default — tap the icon to mute
@@ -1042,9 +1124,18 @@
   const footer=document.getElementById('footer'), cheat=document.getElementById('cheat');
   const cheatArmed=document.getElementById('cheatArmed');
   let taps=0, tapT=0;
-  function updateCheat(){ cheatArmed.textContent = armed
-    ? 'Armed: '+valueLabel(armed.value)+' '+SUIT_GLYPH[armed.suit]+' ('+valueLabel(armed.value)+' of '+SUIT_NAME[armed.suit]+')'
-    : 'Armed: —'; }
+  // Shows what the NEXT reveal would produce: the armed input (or URL force)
+  // before the first reveal, then the stack chain; "Hold to arm" while locked.
+  function updateCheat(){
+    const card = lastRevealed ? stebbinsNext(lastRevealed)
+               : armed ? {value:armed.value, suit:armed.suit}
+               : urlForce;
+    if(!card){ cheatArmed.textContent='Armed: —'; return; }
+    const locked = (spent || Seq.done) && !gestureArmed;
+    cheatArmed.textContent = (locked ? 'Hold to arm: ' : 'Armed: ')
+      + valueLabel(card.value)+' '+SUIT_GLYPH[card.suit]
+      + ' ('+valueLabel(card.value)+' of '+SUIT_NAME[card.suit]+')';
+  }
   footer.addEventListener('click',()=>{ const now=performance.now(); if(now-tapT>600)taps=0; taps++; tapT=now;
     if(taps>=3){ taps=0; updateCheat(); cheat.classList.add('show'); } });
   document.getElementById('cheatClose').addEventListener('click',()=>cheat.classList.remove('show'));
@@ -1065,6 +1156,7 @@
     pickRandom(){ isRandom=true; chosenSwatch=-1; },
     arm(){ const colour=isRandom?RANDOM_POOL[0]:SWATCHES[chosenSwatch];
       armed={ value: isRandom?KING_VALUE:VALUE_FOR_SWATCH[chosenSwatch], suit:SUIT_FOR_GREMLIN[chosenGremlin], colour, gremlin:chosenGremlin };
+      if(urlForce && !lastRevealed){ armed.value=urlForce.value; armed.suit=urlForce.suit; }
       document.getElementById('pickGremlin').classList.add('hidden');
       document.getElementById('pickColour').classList.add('hidden');
       stageEl.classList.add('show'); layout(); updateCheat(); return armed; },
@@ -1075,7 +1167,10 @@
     freeze(t){ if(!Seq.plan)Seq.plan=buildPlan(); Seq.running=true; Seq.paused=true; Seq.done=false; Seq.t=t; drawScene(t); return t; },
     resume(){ Seq.paused=false; },
     render(t){ drawScene(t||0); },
-    state(){ return {chosenGremlin,chosenSwatch,isRandom,armed,running:Seq.running,t:Seq.t,total:Seq.plan&&Seq.plan.total}; }
+    gesture(){ gestureArmed=true; setInfoGlyph(false); updateCheat(); },
+    pressStart(){ startBtn.click(); },
+    state(){ return {chosenGremlin,chosenSwatch,isRandom,armed,running:Seq.running,t:Seq.t,total:Seq.plan&&Seq.plan.total,
+                     mode:Seq.mode,done:Seq.done,spent,gestureArmed,lastRevealed,urlForce}; }
   };
 })();
 </script>
