@@ -25,7 +25,8 @@ The gremlin choice and the colour choice look like customisation. They are
 not. They are the secret input. They set the card.
 
 Sound is on by default. Tap the speaker icon (bottom right) to set the sound
-to off.
+to off. On iPhone, the sound plays also when the silent switch is on (iOS 16.4
+or later). The sound stops when the page goes to the background.
 
 ---
 
