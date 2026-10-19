@@ -555,18 +555,36 @@
   }
 
   /* ============================================================
-     AUDIO — procedural blips, OFF by default
+     AUDIO — procedural blips, ON by default
      ============================================================ */
   const SFX=(function(){
     let ctx,master,muted=false,built=false;     // sound ON by default
+    /* iOS mutes Web Audio on the ring/silent switch unless the page's audio session is
+       'playback' (Safari 16.4+ Audio Session API). Claim it only while sound is actually
+       running and hand it back ('auto') when suspended, so other apps' audio can resume.
+       Browsers without the API (Android Chrome) skip this entirely. */
+    function setSession(t){ try{ const s=navigator.audioSession; if(s&&s.type!==t)s.type=t; }catch(e){} }
     function build(){ if(built)return; const AC=window.AudioContext||window.webkitAudioContext; if(!AC)return;
+      if(!muted)setSession('playback');
       ctx=new AC(); master=ctx.createGain(); master.gain.value=muted?0:0.5; master.connect(ctx.destination); built=true; }
-    function beep(f,dur,type,vol){ if(!built||muted)return; const o=ctx.createOscillator(),g=ctx.createGain();
+    /* Run the context only while the page is on screen and unmuted. Android keeps Web Audio
+       alive in a backgrounded tab, so suspend on hide/pagehide/freeze and when muted. */
+    let away=false;
+    function sync(){ if(!ctx||ctx.state==='closed')return;
+      if(muted||away||document.visibilityState==='hidden'){ if(ctx.state==='running'&&ctx.suspend)ctx.suspend().catch(()=>{}); setSession('auto'); }
+      else { setSession('playback'); if(ctx.state!=='running'&&ctx.resume) ctx.resume().catch(()=>{}); } }
+    document.addEventListener('visibilitychange',sync);
+    window.addEventListener('pagehide',()=>{ away=true; sync(); });
+    window.addEventListener('pageshow',()=>{ away=false; sync(); });
+    document.addEventListener('freeze',()=>{ away=true; sync(); });
+    document.addEventListener('resume',()=>{ away=false; sync(); });
+    // don't queue blips (e.g. a pending setTimeout arpeggio) into a suspended context — they'd all burst out on return
+    function beep(f,dur,type,vol){ if(!built||muted||away||document.visibilityState==='hidden')return; const o=ctx.createOscillator(),g=ctx.createGain();
       o.type=type||'square'; o.frequency.value=f; o.connect(g); g.connect(master); const t=ctx.currentTime;
       g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(vol||0.3,t+0.012);
       g.gain.exponentialRampToValueAtTime(0.0001,t+(dur||0.1)); o.start(t); o.stop(t+(dur||0.1)+0.03); }
     return {
-      unlock(){ build(); if(ctx&&ctx.resume)ctx.resume(); },
+      unlock(){ build(); sync(); },
       step(){ beep(120+Math.random()*40,0.06,'triangle',0.16); },
       wave(){ beep(540,0.08,'square',0.22); setTimeout(()=>beep(720,0.1,'square',0.2),85); },
       think(){ beep(300,0.14,'sine',0.18); },
@@ -584,7 +602,7 @@
       honk(){ beep(240,0.16,'square',0.3); setTimeout(()=>beep(150,0.20,'square',0.26),55); },       // ACHOO
       whooshUp(){ [392,587,784,1175].forEach((f,i)=>setTimeout(()=>beep(f,0.09,'sine',0.16),i*55)); },
       whooshDown(){ [1175,784,587,392].forEach((f,i)=>setTimeout(()=>beep(f,0.09,'sine',0.16),i*55)); },
-      toggle(){ muted=!muted; build(); if(master)master.gain.value=muted?0:0.5; if(ctx&&ctx.resume)ctx.resume(); return muted; },
+      toggle(){ muted=!muted; build(); if(master)master.gain.value=muted?0:0.5; sync(); return muted; },
       isMuted(){ return muted; }
     };
   })();
